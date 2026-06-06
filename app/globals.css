@@ -1,0 +1,189 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', 'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0f172a; /* Slate 900 for dark mode background */
+  color: #f8fafc; /* Slate 50 for text */
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+textarea {
+  resize: vertical;
+}
+
+/* Print Styles */
+.print-only {
+  display: none;
+}
+
+@media print {
+  /* Hide normal screen app */
+  .screen-only {
+    display: none !important;
+  }
+
+  /* Show print layout */
+  .print-only {
+    display: block !important;
+    background: white !important;
+    color: black !important;
+    width: 100%;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-family: 'Yu Gothic', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+
+  @page {
+    size: A4;
+    margin: 20mm;
+  }
+
+  .print-page {
+    page-break-after: always;
+    min-height: 250mm;
+  }
+
+  .print-page:last-child {
+    page-break-after: avoid;
+  }
+
+  /* Cover layout */
+  .print-cover {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    min-height: 250mm;
+    text-align: center;
+    padding-top: 30mm;
+  }
+
+  .print-cover-title {
+    font-size: 26pt;
+    font-weight: bold;
+    margin-bottom: 20mm;
+    border-bottom: 2pt solid #000;
+    padding-bottom: 5mm;
+    width: 80%;
+  }
+
+  .print-cover-meta {
+    font-size: 14pt;
+    margin-top: 20mm;
+    width: 80%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5mm;
+    text-align: left;
+  }
+
+  .print-cover-meta-item {
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 2mm;
+  }
+
+  /* Script Section Header */
+  .print-header {
+    border-bottom: 1.5pt solid #000;
+    margin-bottom: 8mm;
+    padding-bottom: 2mm;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10pt;
+  }
+
+  /* Table style for Sketch (コント) 2-column print */
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 5mm;
+  }
+
+  .print-table td, .print-table th {
+    vertical-align: top;
+    padding: 3mm 4mm;
+    border-bottom: 0.5pt solid #ccc;
+  }
+
+  .print-table th {
+    border-bottom: 2pt solid #000;
+    text-align: left;
+    font-weight: bold;
+  }
+
+  .print-table-col-main {
+    width: 60%;
+  }
+
+  .print-table-col-cue {
+    width: 40%;
+    border-left: 0.5pt solid #ccc;
+    font-size: 9pt;
+    color: #111;
+  }
+
+  /* Standup (漫才) list style */
+  .print-line-list {
+    margin-top: 5mm;
+  }
+
+  .print-line {
+    margin-bottom: 4mm;
+    line-height: 1.6;
+  }
+
+  .print-line-stage {
+    color: #555;
+    font-style: italic;
+  }
+
+  .print-line-sound, .print-line-light {
+    color: #000;
+    font-weight: bold;
+    background: #f0f0f0;
+    padding: 1mm 2mm;
+    border-radius: 2px;
+    display: inline-block;
+    margin: 1mm 0;
+  }
+}
+
