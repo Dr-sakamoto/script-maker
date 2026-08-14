@@ -140,3 +140,12 @@ npm run dev
 
 「芸人が 1 時間台本を書いたとき、Word に戻りたくなくなること」を最重要成功指標とします。
 
+## この先
+
+台本を「文書」から「タイムライン」に変え、間・音源・照明をデータとして持たせて
+デジタル・プレ・リハーサル（通し再生・実尺の確認）に進むための設計要件は
+[`docs/rehearsal-data-spec.md`](docs/rehearsal-data-spec.md)。
+中長期の順路全体は [pompman `docs/neta-ai-roadmap.md`](https://github.com/Dr-sakamoto/pompman/blob/main/docs/neta-ai-roadmap.md)。
+
+**この段階でツールの成功条件は変えません。** データ収集のために必須入力を増やさないことが前提です。
+
