@@ -1,3 +1,5 @@
+import type { Performer } from '../types';
+
 /** 役。作品ごとに cast で定義する（親父・母親・卵…） */
 export type Role = string;
 
@@ -44,5 +46,13 @@ export type Doc = {
   items: Item[];
   /** 音源番号→名前（ネタ管理で登録した音源トラック） */
   sounds?: Record<number, string>;
+  /** 表紙・配役まわり（ネタ管理の登録。「わたす」で直す） */
+  performers?: Performer[];
+  university?: string;
+  tools?: string;
+  bringIns?: string;
+  costumes?: string;
+  /** 役ごとの配役（演者）と衣装 */
+  assign?: Record<Role, { performerId: string; costume: string }>;
   updatedAt: number;
 };

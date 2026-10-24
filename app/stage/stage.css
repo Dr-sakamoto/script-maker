@@ -1389,3 +1389,108 @@
   background: #111;
   color: #fff;
 }
+
+/* ===== わたす：表紙・配役・音源 ===== */
+.stage-app .hand {
+  overflow-y: auto;
+}
+.stage-app .handoff {
+  flex: none;
+  min-height: 100%;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+.stage-app .handoff .export {
+  flex: none;
+  height: 46dvh;
+  min-height: 220px;
+}
+.info {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 0 10px;
+}
+.info > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-weight: 700;
+  font-size: 14px;
+}
+.info-body {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+  font-size: 13px;
+}
+.info-body h4 {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--sub);
+}
+.info .field {
+  display: grid;
+  grid-template-columns: 6.5em 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.info .field span {
+  color: var(--sub);
+}
+.info input:not([type='color']),
+.info select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--input);
+  min-width: 0;
+}
+.info-row {
+  display: flex;
+  gap: 10px;
+}
+.info-cast {
+  display: grid;
+  grid-template-columns: 28px minmax(5em, 1fr) auto minmax(6em, 1fr) minmax(6em, 1.4fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.info-cast input[type='color'] {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.info-cast .kind {
+  font-size: 11px;
+  color: var(--sub);
+}
+.info-cast > select:not(:nth-last-child(3)) {
+  /* 配役が無い役（小道具）は列がずれないように */
+}
+.info-cast button:disabled {
+  opacity: 0.25;
+}
+.info-snd {
+  display: grid;
+  grid-template-columns: 2em 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+.info .add {
+  justify-self: start;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .info-cast {
+    grid-template-columns: 28px 1fr auto;
+  }
+  .info-cast .kind {
+    display: none;
+  }
+  .info-cast .cs {
+    grid-column: 2 / 4;
+  }
+}

@@ -67,3 +67,57 @@ describe('大道具', () => {
     expect(e.items.filter((i) => i.t === 'move' && i.w === 'set-desk')).toHaveLength(1);
   });
 });
+
+import { itemsToBlocks, soundRegistry } from '../bridge';
+import { parseItems } from '../io';
+
+describe('「編集する」と「かく」を1つにしたあとの書き戻し', () => {
+  const base = () => {
+    const { unit, script } = chichiSample();
+    return { unit, script, doc: docFromScript(script, unit) };
+  };
+
+  it('配役・衣装・道具・持ち込み・衣装（全体）が往復する', () => {
+    const { script, doc } = base();
+    doc.assign = { ...doc.assign, oyaji: { performerId: 'p1', costume: '作業着' } };
+    doc.tools = '食卓';
+    doc.bringIns = '卵';
+    const s = scriptWithDoc(script, doc);
+    expect(s.characters.find((c) => c.id === 'oyaji')).toMatchObject({ performerId: 'p1', costume: '作業着' });
+    expect([s.tools, s.bringIns]).toEqual(['食卓', '卵']);
+    expect(docFromScript(s).assign?.oyaji).toEqual({ performerId: 'p1', costume: '作業着' });
+  });
+
+  it('役を足す・なくす', () => {
+    const { script, doc } = base();
+    doc.cast = [...doc.cast, { id: 'new1', name: '息子', short: '息', color: '#336699', kind: 'puppet' }];
+    expect(scriptWithDoc(script, doc).characters.map((c) => c.name)).toContain('息子');
+    doc.cast = doc.cast.filter((c) => c.id !== 'haha');
+    expect(scriptWithDoc(script, doc).characters.map((c) => c.id)).not.toContain('haha');
+  });
+
+  it('音源リストの名前を変える・消す（舞台で付けた名前も重なる）', () => {
+    const { script, doc } = base();
+    expect(soundRegistry(doc)).toEqual({ 1: '頭蓋骨陥没音' });
+    doc.items = doc.items.map((i) => (i.t === 'cue' ? { ...i, x: undefined } : i)) as typeof doc.items;
+    doc.sounds = { 1: '陥没音', 3: 'ベル' };
+    expect(scriptWithDoc(script, doc).sounds.map((s) => [s.index, s.name])).toEqual([[1, '陥没音'], [3, 'ベル']]);
+    doc.sounds = {};
+    expect(scriptWithDoc(script, doc).sounds).toEqual([]);
+  });
+
+  it('舞台の項目から、これまでの形のブロックも作る（きっかけ付き）', () => {
+    const { doc } = base();
+    const blocks = itemsToBlocks(doc);
+    expect(blocks.find((b) => b.type === 'dialogue')).toMatchObject({ speaker: '母親', text: 'ケンジ、もうすぐ着くらしいわ。' });
+    const snd = blocks.find((b) => b.type === 'sound');
+    expect(snd?.text).toBe('サレルロブロ1 C.I');
+    expect(snd?.cue?.triggerText).toContain('母親 ハケ');
+    expect(blocks.some((b) => b.type === 'stage' && b.text.includes('間 2秒'))).toBe(true);
+  });
+
+  it('JSON を読み込むときは stage の項目も読める', () => {
+    const { script } = base();
+    expect(parseItems(JSON.stringify({ stage: script.stage }))).toHaveLength(13);
+  });
+});
