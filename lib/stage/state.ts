@@ -30,7 +30,8 @@ export const pinArea = (p: PinNo) => (['下手', '中央', '上手'] as const)[p
 
 export function initialState(cast: CastMember[]): StageState {
   const pos: Record<Role, Place> = {};
-  for (const c of cast) if (c.kind === 'puppet') pos[c.id] = { on: false, side: c.home ?? 'L' };
+  // 人形は袖に、小道具は小道具箱に（どちらも「舞台にいない」）
+  for (const c of cast) pos[c.id] = { on: false, side: c.home ?? 'L' };
   return {
     lit: false,
     pins: [false, false, false],

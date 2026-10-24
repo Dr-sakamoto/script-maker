@@ -125,3 +125,34 @@ export function Puppet3D(p: Props) {
     </group>
   );
 }
+
+/** 舞台に置いた小道具：角を落とした箱＋名前。見た目は全部共通で色だけ変わる */
+export function Prop3D(p: { member: CastMember; x: number; ghost: boolean; reduced: boolean; dragging: boolean; onDown?: (e: ThreeEvent<PointerEvent>) => void }) {
+  const m = useMats(p.member.color);
+  const g = useRef<Group>(null);
+  useEffect(() => {
+    for (const k of Object.values(m) as Material[]) {
+      k.opacity = p.ghost ? 0.4 : 1;
+      k.depthWrite = !p.ghost;
+    }
+  }, [m, p.ghost]);
+  useFrame((_, dt) => {
+    const o = g.current;
+    if (!o) return;
+    const k = p.reduced || p.dragging ? 1 : 1 - Math.exp(-dt * 7);
+    o.position.x += (p.x - o.position.x) * k;
+    o.position.y = p.dragging && !p.reduced ? 0.12 : 0;
+  });
+  return (
+    <group ref={g} position={[p.x, 0, 0.55]}>
+      <mesh material={m.body} position={[0, 0.22, 0]} castShadow receiveShadow>
+        <boxGeometry args={[0.5, 0.44, 0.4]} />
+      </mesh>
+      <NameTag name={p.member.name} y={0.24} z={0.25} px={26} opacity={p.ghost ? 0.5 : 1} />
+      <mesh position={[0, 0.3, 0]} onPointerDown={p.onDown}>
+        <boxGeometry args={[0.8, 0.8, 0.7]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}

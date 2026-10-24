@@ -6,10 +6,10 @@ import { circled } from '../../lib/stage/export';
 import { layoutLabels, type Label } from '../../lib/stage/layout';
 import { NARRATOR, WING, type Place, type StageState } from '../../lib/stage/state';
 import type { CastMember, Item, PinNo, Role } from '../../lib/stage/types';
-import { BATTEN, camPose, FIXTURES, HEAD_Y, makeCamera, project, screenToPct, SPEAKER, WING_PEEK, worldX } from './geom';
-import { NameTag, Puppet3D } from './Puppet3D';
+import { BATTEN, camPose, FIXTURES, HEAD_Y, makeCamera, project, screenToPct, WING_PEEK, worldX } from './geom';
+import { NameTag, Prop3D, Puppet3D } from './Puppet3D';
 import { ProgressLine, ScreenSprite } from './Sprites3D';
-import { Batten, Lights, Speaker3D, StageSet } from './Scene';
+import { Batten, Lights, StageSet } from './Scene';
 
 export type StageProps = {
   cast: CastMember[];
@@ -23,8 +23,6 @@ export type StageProps = {
   onMove?: (role: Role, place: Place) => void;
   onTapRole?: (role: Role) => void;
   onLight?: (p: PinNo | undefined, fade: number) => void;
-  onSpeaker?: (fade: number) => void;
-  onBadge?: (n: number, fade: number) => void;
   onEdit?: (id: string, patch: Partial<Item>) => void;
   /** 「見せる」：全体の秒数。進みは舞台ツラの光の線で出す */
   total?: number;
@@ -39,10 +37,8 @@ export type StageProps = {
   onSwap?: (id: string) => void;
   /** 背景（ホリゾント）を触った：話者なしの（動き） */
   onBackdrop?: () => void;
-  /** スピーカーの横で名前を打つ音源（cue）か SE */
-  soundEdit?: Item | null;
-  soundEditKey?: number;
-  onSoundDone?: (id: string) => void;
+  /** 舞台の外（人形箱・小道具箱）から落としたときに、舞台の x（0〜100）を求める */
+  apiRef?: React.MutableRefObject<{ pctAt: (clientX: number, clientY: number) => number | null } | null>;
   /** 舞台の隅に置く小さな道具（記号だけ） */
   tray?: React.ReactNode;
   /** 人形の長押し：名前と色を変える */
@@ -87,7 +83,6 @@ export function Stage(p: StageProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [hold, setHold] = useState<Hold | null>(null);
   const [, tick] = useState(0);
-  const [pinMode, setPinMode] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [castEdit, setCastEdit] = useState<Role | null>(null);
   const finish = (id: string) => {
@@ -123,15 +118,21 @@ export function Stage(p: StageProps) {
     return () => cancelAnimationFrame(raf);
   }, [hold]);
 
-  useEffect(() => {
-    if (!p.interactive) setPinMode(false);
-  }, [p.interactive]);
-
-  const halfW = p.size === 'big' ? 4.4 : 5;
+  const halfW = p.size === 'big' ? 4.4 : 4.7;
   const cam = useMemo(() => makeCamera(sz.w, sz.h, halfW), [sz, halfW]);
+  if (p.apiRef)
+    p.apiRef.current = {
+      pctAt: (cx, cy) => {
+        const r = wrap.current?.getBoundingClientRect();
+        if (!r || cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) return null;
+        return Math.round(screenToPct(cam, sz.w, sz.h, cx - r.left, cy - r.top));
+      },
+    };
   const proj = (x: number, y: number, z: number) => project(cam, sz.w, sz.h, new Vector3(x, y, z));
 
   const roles = p.cast.filter((c) => c.kind === 'puppet');
+  // 舞台に置いてある小道具（掴んでいる最中も）
+  const floorProps = p.cast.filter((c) => c.kind === 'prop' && (p.st.pos[c.id]?.on || (drag?.role === c.id && drag.moved)));
   const shownPct = (r: Role) => {
     if (drag?.role === r && drag.moved) return drag.pct;
     const pl = p.st.pos[r];
@@ -175,7 +176,7 @@ export function Stage(p: StageProps) {
       d = { role: r, moved: true, pct: screenToPct(cam, sz.w, sz.h, ev.clientX - rect.left, ev.clientY - rect.top) };
       setDrag(d);
     };
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
@@ -184,7 +185,15 @@ export function Stage(p: StageProps) {
         if (performance.now() - t0 > 500 && p.onCast) return setCastEdit(tapRole);
         return p.onTapRole?.(tapRole);
       }
-      const place: Place = d.pct < WING ? { on: false, side: 'L' } : d.pct > 100 - WING ? { on: false, side: 'R' } : { on: true, x: Math.round(d.pct) };
+      // 人形箱・小道具箱の上で離したら、近い袖へハケる／片付ける
+      const overBox = !!(document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest('[data-drop="box"]');
+      const place: Place = overBox
+        ? { on: false, side: d.pct < 50 ? 'L' : 'R' }
+        : d.pct < WING
+          ? { on: false, side: 'L' }
+          : d.pct > 100 - WING
+            ? { on: false, side: 'R' }
+            : { on: true, x: Math.round(d.pct) };
       p.onMove?.(r, place);
     };
     window.addEventListener('pointermove', move);
@@ -227,8 +236,6 @@ export function Stage(p: StageProps) {
   }
 
   const playing = Object.keys(p.st.playing).map(Number).sort((a, b) => a - b);
-  const spk = proj(SPEAKER.x - 0.05, 1.05, SPEAKER.z);
-  const battenAt = proj(0, BATTEN.y - 0.5, BATTEN.z);
   const holdS = hold ? (performance.now() - hold.t0) / 1000 : 0;
   const wingL = proj(worldX(WING), 0, 0).x;
   const wingR = proj(worldX(100 - WING), 0, 0).x;
@@ -236,11 +243,6 @@ export function Stage(p: StageProps) {
 
   // 「見せる」は文字も3D空間に置く（HTMLの重ね書きを使わない）
   const in3D = p.size === 'big';
-
-  const lightTap = (pin: PinNo | undefined) => (fade: number) => {
-    p.onLight?.(pin, fade);
-    if (pin) setPinMode(false);
-  };
 
   return (
     <div ref={wrap} className={`stage stage-${p.size}${p.interactive ? ' live' : ''}`} onClick={p.onTap}>
@@ -256,29 +258,20 @@ export function Stage(p: StageProps) {
           pinX={FIXTURES.map((x) => x * 0.95)}
           reduced={p.reduced}
         />
+        {/* 灯体を直接触る＝そのピン（タップ＝カット、長押し＝じわ）。全体は照明卓で */}
         <Batten
           interactive={p.interactive}
-          pinMode={pinMode}
           pins={p.st.pins}
           lit={p.st.lit}
-          onBar={pinMode ? undefined : press('batten', battenAt, lightTap(undefined))}
-          onPin={(i) => press(`pin${i}`, proj(FIXTURES[i], BATTEN.y - 0.55, BATTEN.z), lightTap((i + 1) as PinNo))}
-          onToggle={(e) => {
-            e.stopPropagation();
-            setPinMode((v) => !v);
-          }}
+          onPin={(i) => press(`pin${i}`, proj(FIXTURES[i], BATTEN.y - 0.55, BATTEN.z), (f) => p.onLight?.((i + 1) as PinNo, f))}
         />
-        <Speaker3D
-          playing={playing.length > 0}
-          reduced={p.reduced}
-          onDown={p.interactive ? press('speaker', spk, (f) => p.onSpeaker?.(f)) : undefined}
-        />
-        {roles.map((r) => {
+        {/* 舞台に出ていない人形は人形箱にいるので、袖には出さない（掴んでいる間だけ見せる） */}
+        {roles.filter((r) => p.st.pos[r.id]?.on || (drag?.role === r.id && drag.moved)).map((r) => {
           const pct = shownPct(r.id);
           const others = roles.filter((o) => o.id !== r.id && p.st.pos[o.id]?.on).map((o) => shownPct(o.id));
           const near = others.sort((a, b) => Math.abs(a - pct) - Math.abs(b - pct))[0];
           const face = near == null ? 0 : Math.sign(near - pct);
-          const prop = p.cast.find((c) => c.kind === 'prop' && c.holder === r.id);
+          const prop = p.cast.find((c) => c.kind === 'prop' && c.holder === r.id && !p.st.pos[c.id]?.on);
           return (
             <Puppet3D
               key={r.id}
@@ -297,6 +290,17 @@ export function Stage(p: StageProps) {
             />
           );
         })}
+        {floorProps.map((c) => (
+          <Prop3D
+            key={c.id}
+            member={c}
+            x={worldX(shownPct(c.id))}
+            ghost={isGhost(c.id)}
+            reduced={p.reduced}
+            dragging={drag?.role === c.id && drag.moved}
+            onDown={p.interactive ? grab(c.id) : undefined}
+          />
+        ))}
         {in3D &&
           labels.map((l) => (
             <ScreenSprite
@@ -314,7 +318,7 @@ export function Stage(p: StageProps) {
             />
           ))}
         {in3D && playing.length > 0 && (
-          <group position={[SPEAKER.x, 1.2, SPEAKER.z]}>
+          <group position={[-3.6, 3.0, 0.8]}>
             <NameTag name={playing.map((n) => `♪${circled(n)}`).join(' ')} y={0} px={26} />
           </group>
         )}
@@ -386,22 +390,6 @@ export function Stage(p: StageProps) {
           );
         })}
 
-        {!in3D && playing.length > 0 && (
-          <div className="badges" style={{ left: spk.x, top: spk.y }}>
-            {playing.map((n) => (
-              <button
-                key={n}
-                className="badge"
-                title={p.cueNames[n] || `音源${circled(n)}`}
-                disabled={!p.interactive}
-                onPointerDown={p.interactive ? press(`badge${n}`, spk, (f) => p.onBadge?.(n, f)) : undefined}
-              >
-                ♪{circled(n)}
-              </button>
-            ))}
-          </div>
-        )}
-
         {castEdit && p.onCast && (() => {
           const m = member(p.cast, castEdit);
           if (!m) return null;
@@ -418,21 +406,6 @@ export function Stage(p: StageProps) {
             />
           );
         })()}
-
-        {p.soundEdit && (p.soundEdit.t === 'cue' || p.soundEdit.t === 'se') && (
-          <div key={`${p.soundEdit.id}:${p.soundEditKey}`} className="sound-edit" style={{ left: Math.min(spk.x, sz.w - 120), top: Math.max(spk.y - 44, 8) }} onPointerDown={(e) => e.stopPropagation()}>
-            <b>{p.soundEdit.t === 'cue' ? `♪${circled(p.soundEdit.n)}` : '♪SE'}</b>
-            <input
-              autoFocus
-              defaultValue={p.soundEdit.t === 'cue' ? (p.soundEdit.x ?? p.cueNames[p.soundEdit.n] ?? '') : p.soundEdit.x}
-              placeholder="…"
-              enterKeyHint="done"
-              onChange={(e) => p.onEdit?.(p.soundEdit!.id, { x: e.target.value || (p.soundEdit!.t === 'cue' ? undefined : '') } as Partial<Item>)}
-              onBlur={() => p.onSoundDone?.(p.soundEdit!.id)}
-              onKeyDown={(e) => enter(e) && (e.target as HTMLInputElement).blur()}
-            />
-          </div>
-        )}
 
         {p.tray && <div className="tray">{p.tray}</div>}
 

@@ -4,15 +4,16 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { loadLocalScripts, saveLocalScripts } from '../../lib/storage';
 import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
-import { member, puppets, shortName } from '../../lib/stage/cast';
-import { insertAfter, moveBefore, removeItem, touch, updateItem, type Edit } from '../../lib/stage/edit';
+import { member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
+import { insertAfter, moveBefore, removeItem, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
 import { histReducer, initHist } from '../../lib/stage/history';
 import { parseItems } from '../../lib/stage/io';
-import { allStates, cueName, initialState, isDark, nextCueNo, type Place, type StageState } from '../../lib/stage/state';
+import { allStates, cueName, initialState, isDark, nextCueNo, WING, type Place, type StageState } from '../../lib/stage/state';
 import { indexAt, timeline } from '../../lib/stage/timing';
-import type { Doc, Item, NewItem, PinNo, Role } from '../../lib/stage/types';
+import type { CastMember, Doc, Item, NewItem, PinNo, Role } from '../../lib/stage/types';
 import { LAYERS, type Layer } from './chips';
 import { clock } from './clock';
+import { CastBox, LightConsole, PropBox, SoundDevice, Transport } from './Desk';
 import { HandOff } from './HandOff';
 import { InputBar } from './InputBar';
 import { ScriptView } from './ScriptView';
@@ -59,7 +60,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   /** つくるの中の全画面プレビュー（3D空間だけ） */
   const [full, setFull] = useState(false);
   const [autoEdit, setAutoEdit] = useState<{ id: string; n: number } | null>(null);
-  const [legend, setLegend] = useState(false);
+  const stageApi = useRef<{ pctAt: (cx: number, cy: number) => number | null } | null>(null);
   /** つくる：スピーカーの横で音源名／SE を打つ */
   const [soundEdit, setSoundEdit] = useState<{ id: string; n: number } | null>(null);
   const setMode = (m: Mode) => {
@@ -257,6 +258,20 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     if (mode === 'make') setSoundEdit((a) => ({ id: e.items[e.cursor].id, n: (a?.n ?? 0) + 1 }));
     else setOpenChip(e.items[e.cursor].id);
   };
+  /** 照明卓：全体の明転・暗転（じわは秒数） */
+  const onLightAll = (on: boolean, fade: number) => doTouch((s) => (s.lit === on ? null : { t: 'light', on, ...(fade ? { fade } : {}) }));
+  /** 箱から舞台へ：落としたところに出す／置く */
+  const onDropFromBox = (id: Role, cx: number, cy: number) => {
+    const x = stageApi.current?.pctAt(cx, cy);
+    if (x == null) return;
+    onMove(id, { on: true, x: Math.min(100 - WING - 1, Math.max(WING + 1, x)) });
+  };
+  /** 小道具箱の＋：新しい小道具（色は自動） */
+  const onAddProp = (name: string) => {
+    const d = ref.current.doc;
+    const m: CastMember = { id: uid(), name, short: shortName(name), color: PALETTE[d.cast.length % PALETTE.length], kind: 'prop' };
+    dispatch({ type: 'commit', doc: { ...d, cast: [...d.cast, m] } });
+  };
   const onSoundDone = (id: string) => {
     setSoundEdit(null);
     const { doc, cursor } = ref.current;
@@ -357,35 +372,13 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       onMove={onMove}
       onTapRole={onTouchRole}
       onLight={onLight}
-      onSpeaker={onSpeaker}
-      onBadge={onBadge}
+      apiRef={stageApi}
       onEdit={onEdit}
       onCast={onCast}
       autoEdit={autoEdit}
       onDoneEdit={onDoneEdit}
       onSwap={onSwap}
       onBackdrop={onBackdrop}
-      soundEdit={soundEdit ? (items.find((x) => x.id === soundEdit.id) ?? null) : null}
-      soundEditKey={soundEdit?.n}
-      onSoundDone={onSoundDone}
-      tray={
-        make && !full ? (
-          <>
-            <button onClick={onMa} title="間">
-              ・・
-            </button>
-            <button className="snd" onClick={() => onSE('')} title="SE">
-              ♪SE
-            </button>
-            <button onClick={enterShow} title="全画面で見る">
-              ⛶
-            </button>
-            <button className={legend ? 'on' : ''} onClick={() => setLegend((v) => !v)} title="さわりかた">
-              ?
-            </button>
-          </>
-        ) : null
-      }
       total={full ? tl.total : undefined}
       title={atTop ? `${doc.genre}「${doc.title}」` : null}
       onTap={full ? togglePlay : undefined}
@@ -455,7 +448,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
           ←
         </a>
         <input className="title" value={doc.title} onChange={(e) => onTitle(e.target.value)} aria-label="題" />
-        <span className="undo">
+        <span className="undo" hidden={make}>
           <button disabled={!h.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="元に戻す">
             ↶
           </button>
@@ -477,16 +470,27 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
 
       <main>
         {make && (
-          <>
-            <section className="left">
-              {stage}
-              {legend && (
-                <p className="legend">
-                  人形：タップ＝しゃべる・ドラッグ＝動く・袖へ＝ハケ・長押し＝名前と色　｜　壁：タップ＝（動き）　｜　バトン：タップ＝明暗・長押し＝じわ　｜　◎＝ピン　｜　🔈：タップ＝C.I・長押し＝F.I　｜　♪：タップ＝C.O・長押し＝F.O
-                </p>
-              )}
-            </section>
-          </>
+          <div className="desk">
+            <SoundDevice
+              st={st}
+              cueNames={cueNames}
+              editing={soundEdit ? (items.find((x) => x.id === soundEdit.id) ?? null) : null}
+              editKey={soundEdit?.n}
+              interactive={!playing}
+              onNew={onSpeaker}
+              onStop={onBadge}
+              onSE={() => onSE('')}
+              onName={(id, x) => {
+                const it = ref.current.doc.items.find((i) => i.id === id);
+                onEdit(id, { x: it?.t === 'cue' ? x || undefined : x } as Partial<Item>);
+              }}
+              onNameDone={onSoundDone}
+            />
+            <LightConsole st={st} interactive={!playing} onLight={onLightAll} />
+            <section className="left">{stage}</section>
+            <CastBox cast={cast} st={st} interactive={!playing} onDrop={onDropFromBox} />
+            <PropBox cast={cast} st={st} interactive={!playing} onDrop={onDropFromBox} onAdd={onAddProp} />
+          </div>
         )}
         {mode === 'write' && (
           <section className="right">
@@ -505,7 +509,24 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
         {mode === 'write' && (
           <InputBar cast={cast} role={role} kind={kind} onRole={onTapRole} onKind={setKind} onSubmit={onSubmit} onMa={onMa} onSE={onSE} autoFocus />
         )}
-        {mode !== 'hand' && <TimeBar cast={cast} items={items} states={states} tl={tl} playing={playing} onToggle={togglePlay} onSeek={onSeek} />}
+        {mode === 'write' && <TimeBar cast={cast} items={items} states={states} tl={tl} playing={playing} onToggle={togglePlay} onSeek={onSeek} />}
+        {make && (
+          <Transport
+            cast={cast}
+            items={items}
+            states={states}
+            tl={tl}
+            playing={playing}
+            canUndo={!!h.past.length}
+            canRedo={!!h.future.length}
+            onToggle={togglePlay}
+            onSeek={onSeek}
+            onUndo={() => dispatch({ type: 'undo' })}
+            onRedo={() => dispatch({ type: 'redo' })}
+            onMa={onMa}
+            onFull={enterShow}
+          />
+        )}
       </footer>
     </div>
   );

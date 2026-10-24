@@ -156,57 +156,32 @@ export function StageSet({ onBackdrop }: { onBackdrop?: (e: ThreeEvent<PointerEv
 
 type Down = (e: ThreeEvent<PointerEvent>) => void;
 
-/** 照明のバトン（灯体3つ）と、端の ◎ */
-export function Batten(p: { pinMode: boolean; pins: boolean[]; lit: boolean; onBar?: Down; onPin?: (i: number) => Down; onToggle?: Down; interactive: boolean }) {
+/** 照明のバトン（灯体3つ）。灯体を触るとそのピン */
+export function Batten(p: { pins: boolean[]; lit: boolean; onPin?: (i: number) => Down; interactive: boolean }) {
   return (
     <group position={[0, BATTEN.y, BATTEN.z]}>
       <mesh rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.035, 0.035, BATTEN.half * 2, 10]} />
         <meshStandardMaterial color="#5c5c66" metalness={0.6} roughness={0.4} emissive={p.lit ? '#3a3200' : '#000'} />
       </mesh>
-      {/* バーの当たり判定 */}
-      <mesh onPointerDown={p.interactive ? p.onBar : undefined}>
-        <boxGeometry args={[BATTEN.half * 2, 0.6, 0.6]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
       {FIXTURES.map((fx, i) => (
         <group key={i} position={[fx, -0.18, 0]} rotation={[-0.55, 0, 0]}>
           <mesh>
             <cylinderGeometry args={[0.13, 0.16, 0.34, 18]} />
-            <meshStandardMaterial
-              color={p.pinMode ? '#7a6a2a' : '#2c2c30'}
-              metalness={0.4}
-              roughness={0.5}
-              emissive={p.pinMode ? '#4a3d00' : '#000'}
-            />
+            <meshStandardMaterial color="#2c2c30" metalness={0.4} roughness={0.5} />
           </mesh>
           <mesh position={[0, -0.172, 0]} rotation={[Math.PI / 2, 0, 0]}>
             <circleGeometry args={[0.15, 20]} />
             <meshBasicMaterial color={p.pins[i] ? '#fff3b0' : '#3a3a3a'} side={DoubleSide} />
           </mesh>
-          {p.pinMode && p.interactive && (
+          {p.interactive && (
             <mesh onPointerDown={p.onPin?.(i)}>
-              <sphereGeometry args={[0.36, 10, 8]} />
+              <sphereGeometry args={[0.4, 10, 8]} />
               <meshBasicMaterial transparent opacity={0} depthWrite={false} />
             </mesh>
           )}
         </group>
       ))}
-      {/* ◎（目立たせない。触れないときは出さない） */}
-      {p.interactive && <group position={[BATTEN.half + 0.28, 0, 0.02]}>
-        <mesh>
-          <torusGeometry args={[0.085, 0.018, 8, 24]} />
-          <meshBasicMaterial color={p.pinMode ? '#ffd23f' : '#77777f'} />
-        </mesh>
-        <mesh>
-          <circleGeometry args={[0.035, 16]} />
-          <meshBasicMaterial color={p.pinMode ? '#ffd23f' : '#77777f'} />
-        </mesh>
-        <mesh onPointerDown={p.onToggle}>
-          <sphereGeometry args={[0.22, 8, 6]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-      </group>}
     </group>
   );
 }

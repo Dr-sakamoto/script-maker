@@ -20,7 +20,7 @@ export function castFromCharacters(chars: Character[]): CastMember[] {
       mark: prop ? undefined : MARKS[k],
       color: c.color || PALETTE[i % PALETTE.length],
       kind: prop ? 'prop' : 'puppet',
-      holder: prop ? c.holder || chars.find((o) => o.id !== c.id && o.kind !== 'prop')?.id : undefined,
+      holder: prop ? c.holder : undefined,
       home: k % 2 === 0 ? 'L' : 'R',
     };
   });
@@ -72,10 +72,14 @@ export function docFromScript(script: ScriptItem, unit?: Unit): Doc {
 
 /** 舞台で変えたもの（項目・役の名前と色・音源名・題）を台本に書き戻す */
 export function scriptWithDoc(script: ScriptItem, doc: Doc): ScriptItem {
-  const characters = script.characters.map((c) => {
+  const characters: Character[] = script.characters.map((c) => {
     const m = doc.cast.find((x) => x.id === c.id);
     return m ? { ...c, name: m.name, color: m.color } : c;
   });
+  // 舞台で足した役（小道具箱の＋など）
+  for (const m of doc.cast)
+    if (!characters.some((c) => c.id === m.id))
+      characters.push({ id: m.id, name: m.name, performerId: '', color: m.color, ...(m.kind === 'prop' ? { kind: 'prop' as const, holder: m.holder } : {}) });
   const sounds = [...(script.sounds ?? [])];
   for (const it of doc.items) {
     if (it.t !== 'cue' || !it.x) continue;

@@ -15,7 +15,7 @@ type Props = {
   onSeek: (t: number) => void;
 };
 
-const Track = memo(function Track({ cast, items, states, tl }: Omit<Props, 'playing' | 'onToggle' | 'onSeek'>) {
+export const Track = memo(function Track({ cast, items, states, tl }: Omit<Props, 'playing' | 'onToggle' | 'onSeek'>) {
   const T = Math.max(tl.total, 0.001);
   const pc = (s: number) => `${(s / T) * 100}%`;
   // 暗転中の区間（項目を適用した後が暗いところ）をつなげる
