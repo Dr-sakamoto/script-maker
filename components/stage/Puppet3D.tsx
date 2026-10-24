@@ -1,6 +1,6 @@
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { Color, Group, MeshStandardMaterial, type Material } from 'three';
+import { CanvasTexture, Color, Group, MeshStandardMaterial, SRGBColorSpace, type Material } from 'three';
 import type { CastMember } from '../../lib/stage/types';
 import { textTexture } from './textSprite';
 
@@ -102,7 +102,7 @@ export function Puppet3D(p: Props) {
             <sphereGeometry args={[0.035, 10, 8]} />
           </mesh>
         ))}
-        <NameTag name={p.member.name} y={0.62} z={0.5} opacity={p.ghost ? 0.5 : 1} />
+        <BodyName name={p.member.name} color={p.member.color} ghost={p.ghost} />
         {(p.holding ?? []).slice(0, 2).map((h, i) => (
           <HeldProp key={h.id} member={h} side={i === 0 ? 1 : -1} ghost={p.ghost} marker={p.propMarker && h.color === p.propMarker ? p.propMarker : null} onDown={p.onPropDown?.(h.id)} />
         ))}
@@ -168,5 +168,65 @@ function HeldProp(p: { member: CastMember; side: 1 | -1; ghost: boolean; marker:
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </group>
+  );
+}
+
+/** 縦書きで回す文字（長音・波線・三点リーダ） */
+const ROTATE = new Set(['ー', '〜', '～', '…', '‥', '－', '-', '—', '（', '）', '「', '」']);
+
+/** 服の色に対して読みやすい文字色（明るい服なら黒、暗い服なら白） */
+function inkFor(bg: string) {
+  const c = new Color(bg);
+  const l = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+  return l > 0.55 ? { fg: '#1d1b19', edge: 'rgba(255,255,255,0.55)' } : { fg: '#ffffff', edge: 'rgba(0,0,0,0.7)' };
+}
+
+function verticalTexture(name: string, bg: string) {
+  const chars = [...name.trim()].slice(0, 8);
+  const n = Math.max(1, chars.length);
+  const W = 128;
+  const cell = 120;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = cell * n;
+  const g = c.getContext('2d')!;
+  const { fg, edge } = inkFor(bg);
+  g.font = `800 ${cell * 0.86}px 'Hiragino Sans','Noto Sans JP','Yu Gothic UI',sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  chars.forEach((ch, i) => {
+    g.save();
+    g.translate(W / 2, cell * i + cell / 2);
+    if (ROTATE.has(ch)) g.rotate(Math.PI / 2);
+    g.lineWidth = 12;
+    g.strokeStyle = edge;
+    g.strokeText(ch, 0, 0);
+    g.fillStyle = fg;
+    g.fillText(ch, 0, 0);
+    g.restore();
+  });
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
+  return { tex: t, n };
+}
+
+/** 役名：胴（円錐）の正面に縦書きで貼る。服の色が文字の地になる */
+function BodyName({ name, color, ghost }: { name: string; color: string; ghost: boolean }) {
+  const { tex, n } = useMemo(() => verticalTexture(name, color), [name, color]);
+  useEffect(() => () => tex.dispose(), [tex]);
+  // 胴の裾から積む。円錐は上ほど細いので、長い名前ほど1文字を小さくして肩より下に収める
+  const bottom = 0.14;
+  const cell = Math.min(0.27, 0.66 / n);
+  const h = cell * n;
+  const cy = bottom + h / 2;
+  const slope = Math.atan(0.42 / BODY_H);
+  const r = 0.42 * (1 - cy / BODY_H);
+  return (
+    <mesh position={[0, cy, r + 0.012]} rotation={[-slope, 0, 0]} renderOrder={2}>
+      <planeGeometry args={[cell * (128 / 120), h]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} opacity={ghost ? 0.5 : 1} />
+    </mesh>
   );
 }
