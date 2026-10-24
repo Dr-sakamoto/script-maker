@@ -39,6 +39,10 @@ export type StageProps = {
   onSwap?: (id: string) => void;
   /** 背景（ホリゾント）を触った：話者なしの（動き） */
   onBackdrop?: () => void;
+  /** スピーカーの横で名前を打つ音源（cue）か SE */
+  soundEdit?: Item | null;
+  soundEditKey?: number;
+  onSoundDone?: (id: string) => void;
   /** 舞台の隅に置く小さな道具（記号だけ） */
   tray?: React.ReactNode;
   /** 人形の長押し：名前と色を変える */
@@ -414,6 +418,21 @@ export function Stage(p: StageProps) {
             />
           );
         })()}
+
+        {p.soundEdit && (p.soundEdit.t === 'cue' || p.soundEdit.t === 'se') && (
+          <div key={`${p.soundEdit.id}:${p.soundEditKey}`} className="sound-edit" style={{ left: Math.min(spk.x, sz.w - 120), top: Math.max(spk.y - 44, 8) }} onPointerDown={(e) => e.stopPropagation()}>
+            <b>{p.soundEdit.t === 'cue' ? `♪${circled(p.soundEdit.n)}` : '♪SE'}</b>
+            <input
+              autoFocus
+              defaultValue={p.soundEdit.t === 'cue' ? (p.soundEdit.x ?? p.cueNames[p.soundEdit.n] ?? '') : p.soundEdit.x}
+              placeholder="…"
+              enterKeyHint="done"
+              onChange={(e) => p.onEdit?.(p.soundEdit!.id, { x: e.target.value || (p.soundEdit!.t === 'cue' ? undefined : '') } as Partial<Item>)}
+              onBlur={() => p.onSoundDone?.(p.soundEdit!.id)}
+              onKeyDown={(e) => enter(e) && (e.target as HTMLInputElement).blur()}
+            />
+          </div>
+        )}
 
         {p.tray && <div className="tray">{p.tray}</div>}
 

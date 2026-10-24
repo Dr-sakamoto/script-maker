@@ -167,30 +167,22 @@
   flex: none;
   position: relative;
 }
-.mode-make .right,
 .mode-write .right {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-/* つくる：舞台が主役。台本は「できていくもの」として小さく */
+/* つくる：舞台だけ。台本は出さない */
+.mode-make .left {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .mode-make .stage {
-  height: min(60dvh, 78vw);
-  min-height: 220px;
-}
-.mode-make .right {
-  border-top: 1px solid var(--line);
-}
-.mode-make .script {
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  font-size: 13px;
-}
-.mode-make .script .body {
-  font-size: 13px;
-  line-height: 1.5;
+  flex: 1;
+  min-height: 0;
 }
 /* かく：台本だけ。速記に集中 */
 .mode-write .right .script {
@@ -204,29 +196,6 @@
 .mode-write .sheet {
   justify-content: center;
 }
-@media (orientation: landscape) and (min-width: 700px) {
-  .mode-make main {
-    flex-direction: row;
-  }
-  .mode-make .left {
-    flex: 1.7;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .mode-make .left .stage {
-    flex: 1;
-    height: auto;
-    min-height: 0;
-  }
-  .mode-make .right {
-    flex: 1;
-    max-width: 440px;
-    border-top: 0;
-    border-left: 1px solid var(--line);
-  }
-}
-
 .legend {
   position: absolute;
   left: 8px;
@@ -269,13 +238,6 @@
 .tray button.on {
   background: #f4f1ea;
   color: #111;
-}
-.ro {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.note.gone {
-  display: none;
 }
 .inline-edit {
   display: inline-flex;
@@ -1047,4 +1009,28 @@
     -2.5px 2.5px 0 var(--ring, #0000), 2.5px 2.5px 0 var(--ring, #0000),
     0 -3px 0 var(--ring, #0000), 0 3px 0 var(--ring, #0000),
     -3px 0 0 var(--ring, #0000), 3px 0 0 var(--ring, #0000);
+}
+
+/* スピーカーの横で音源名／SE を打つ */
+.sound-edit {
+  position: absolute;
+  transform: translateX(-100%);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 999px;
+  background: #2cc3b5;
+  color: #04201d;
+  box-shadow: 0 4px 14px #0008;
+}
+.sound-edit input {
+  width: 9em;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: #ffffffe8;
+  color: #111;
+  font-size: 15px;
 }

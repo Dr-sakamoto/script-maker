@@ -60,6 +60,8 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   const [full, setFull] = useState(false);
   const [autoEdit, setAutoEdit] = useState<{ id: string; n: number } | null>(null);
   const [legend, setLegend] = useState(false);
+  /** つくる：スピーカーの横で音源名／SE を打つ */
+  const [soundEdit, setSoundEdit] = useState<{ id: string; n: number } | null>(null);
   const setMode = (m: Mode) => {
     setModeRaw(m);
     setFull(false);
@@ -216,7 +218,10 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     const n = nextCueNo(ref.current.doc.items);
     const e = doTouch(() => ({ t: 'cue', n, op: fade ? 'F.I' : 'C.I', ...(fade ? { sec: fade } : {}) }));
     const it = e.items[e.cursor];
-    if (it) {
+    if (!it) return;
+    // つくる：名前は舞台のスピーカーの横で打つ／かく：台本のチップで
+    if (mode === 'make') setSoundEdit((a) => ({ id: it.id, n: (a?.n ?? 0) + 1 }));
+    else {
       setOpenChip(it.id);
       setFocusName(it.id);
     }
@@ -248,7 +253,15 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     const { doc, cursor } = ref.current;
     const e = insertAfter(doc.items, cursor, { t: 'se', x: text });
     commit(e);
-    if (!text) setOpenChip(e.items[e.cursor].id);
+    if (text) return;
+    if (mode === 'make') setSoundEdit((a) => ({ id: e.items[e.cursor].id, n: (a?.n ?? 0) + 1 }));
+    else setOpenChip(e.items[e.cursor].id);
+  };
+  const onSoundDone = (id: string) => {
+    setSoundEdit(null);
+    const { doc, cursor } = ref.current;
+    const it = doc.items.find((x) => x.id === id);
+    if (it?.t === 'se' && !it.x.trim()) commit(removeItem(doc.items, cursor, id));
   };
 
   // --- 再生
@@ -352,6 +365,9 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       onDoneEdit={onDoneEdit}
       onSwap={onSwap}
       onBackdrop={onBackdrop}
+      soundEdit={soundEdit ? (items.find((x) => x.id === soundEdit.id) ?? null) : null}
+      soundEditKey={soundEdit?.n}
+      onSoundDone={onSoundDone}
       tray={
         make && !full ? (
           <>
@@ -424,7 +440,6 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       openChip={openChip}
       focusName={focusName}
       scrollKey={scrollKey}
-      readOnly={make}
       onOpenChip={setOpenChip}
       onCursor={setCursor}
       onEdit={onEdit}
@@ -471,7 +486,6 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
                 </p>
               )}
             </section>
-            <section className="right">{scriptView}</section>
           </>
         )}
         {mode === 'write' && (
