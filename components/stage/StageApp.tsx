@@ -10,7 +10,7 @@ import { histReducer, initHist } from '../../lib/stage/history';
 import { parseItems } from '../../lib/stage/io';
 import { allStates, cueName, initialState, isDark, nextCueNo, type Place, type StageState } from '../../lib/stage/state';
 import { indexAt, timeline } from '../../lib/stage/timing';
-import type { Doc, Item, PinNo, Role } from '../../lib/stage/types';
+import type { Doc, Item, NewItem, PinNo, Role } from '../../lib/stage/types';
 import { LAYERS, type Layer } from './chips';
 import { clock } from './clock';
 import { HandOff } from './HandOff';
@@ -19,7 +19,17 @@ import { ScriptView } from './ScriptView';
 import { Stage } from './Stage';
 import { TimeBar } from './TimeBar';
 
-type Mode = 'write' | 'show' | 'hand';
+/** つくる＝舞台を触って作る／かく＝台本を速記する／わたす＝書き出す */
+type Mode = 'make' | 'write' | 'hand';
+const MODES: [Mode, string][] = [
+  ['make', 'つくる'],
+  ['write', 'かく'],
+  ['hand', 'わたす'],
+];
+const modeFromUrl = (): Mode => {
+  const m = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('mode');
+  return m === 'write' || m === 'hand' ? m : 'make';
+};
 type Theme = 'auto' | 'light' | 'dark';
 
 function useReducedMotion() {
@@ -45,7 +55,22 @@ const readTheme = (): Theme => {
 /** 舞台エディタ。台本・役・音源はネタ管理（localStorage の units / scripts）のものを使い、そこへ書き戻す */
 export default function StageApp({ script, unit }: { script: ScriptItem; unit?: Unit }) {
   const [h, dispatch] = useReducer(histReducer, undefined, () => initHist(docFromScript(script, unit)));
-  const [mode, setMode] = useState<Mode>('write');
+  const [mode, setModeRaw] = useState<Mode>(modeFromUrl);
+  /** つくるの中の全画面プレビュー（3D空間だけ） */
+  const [full, setFull] = useState(false);
+  const [autoEdit, setAutoEdit] = useState<{ id: string; n: number } | null>(null);
+  const [legend, setLegend] = useState(false);
+  const setMode = (m: Mode) => {
+    setModeRaw(m);
+    setFull(false);
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set('mode', m);
+      window.history.replaceState(null, '', u);
+    } catch {
+      /* noop */
+    }
+  };
   const [role, setRole] = useState<Role>(() => script.characters[0]?.id ?? '');
   const [kind, setKind] = useState<'line' | 'act'>('line');
   const [layers, setLayers] = useState<Set<Layer>>(new Set());
@@ -147,6 +172,35 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
 
   const onMove = (r: Role, pl: Place) =>
     doTouch(() => (pl.on ? { t: 'move', w: r, in: true, x: pl.x } : { t: 'move', w: r, in: false, side: pl.side }));
+  /** つくる：舞台の上でそのまま打たせる */
+  const openNew = (it: NewItem) => {
+    const { doc, cursor } = ref.current;
+    const e = insertAfter(doc.items, cursor, it);
+    commit(e);
+    setAutoEdit((a) => ({ id: e.items[e.cursor].id, n: (a?.n ?? 0) + 1 }));
+    setScrollKey((k) => k + 1);
+  };
+  const onTouchRole = (r: Role) => {
+    if (mode !== 'make') return onTapRole(r);
+    openNew({ t: 'line', w: r, x: '' });
+  };
+  const onBackdrop = () => openNew({ t: 'act', x: '' });
+  const onDoneEdit = (id: string) => {
+    const { doc, cursor } = ref.current;
+    const it = doc.items.find((x) => x.id === id);
+    if (it && (it.t === 'line' || it.t === 'act') && !it.x.trim() && !(it.t === 'line' && it.n)) commit(removeItem(doc.items, cursor, id));
+  };
+  const onSwap = (id: string) => {
+    const { doc, cursor } = ref.current;
+    const it = doc.items.find((x) => x.id === id);
+    if (!it) return;
+    const next: Item | null =
+      it.t === 'line' ? { id, t: 'act', w: it.w, x: it.x } : it.t === 'act' && it.w ? { id, t: 'line', w: it.w, x: it.x } : null;
+    if (!next) return;
+    commit({ items: doc.items.map((x) => (x.id === id ? next : x)), cursor });
+    setAutoEdit((a) => ({ id, n: (a?.n ?? 0) + 1 }));
+  };
+
   const onTapRole = (r: Role) => {
     setRole(r);
     if (member(cast, r)?.kind === 'prop') setKind('line');
@@ -240,7 +294,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     setPlaying(false);
     clock.set(boardEnd >= 0 ? tl.starts[boardEnd + 1] : 0);
     dispatch({ type: 'cursor', cursor: boardEnd });
-    setMode('show');
+    setFull(true);
   };
 
   // --- キーボード
@@ -254,17 +308,17 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y' && !typing) {
         e.preventDefault();
         dispatch({ type: 'redo' });
-      } else if (e.key === ' ' && !typing && mode !== 'write') {
+      } else if (e.key === ' ' && !typing && (full || mode === 'make')) {
         e.preventDefault();
         togglePlay();
-      } else if (e.key === 'Escape' && mode === 'show') {
+      } else if (e.key === 'Escape' && full) {
         setPlaying(false);
-        setMode('write');
+        setFull(false);
       }
     };
     window.addEventListener('keydown', f);
     return () => window.removeEventListener('keydown', f);
-  }, [mode, togglePlay]);
+  }, [mode, full, togglePlay]);
 
   const onImport = async (f: File) => {
     try {
@@ -276,34 +330,54 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   };
   const onTitle = (title: string) => dispatch({ type: 'commit', doc: { ...ref.current.doc, title }, group: 'title' });
 
-  const write = mode === 'write';
-  const show = mode === 'show';
-  const atTop = show && !playing && cursor <= boardEnd && isDark(st);
+  const make = mode === 'make';
+  const atTop = full && !playing && cursor <= boardEnd && isDark(st);
   const stage = (
     <Stage
       cast={cast}
       st={st}
-      interactive={write && !playing}
-      size={show ? 'big' : mode === 'hand' ? 'small' : 'normal'}
-      inputRole={role}
+      interactive={make && !full && !playing}
+      size={full ? 'big' : 'normal'}
       bubble={bubble}
       cueNames={cueNames}
       reduced={reduced}
       onMove={onMove}
-      onTapRole={onTapRole}
+      onTapRole={onTouchRole}
       onLight={onLight}
       onSpeaker={onSpeaker}
       onBadge={onBadge}
       onEdit={onEdit}
       onCast={onCast}
-      total={show ? tl.total : undefined}
+      autoEdit={autoEdit}
+      onDoneEdit={onDoneEdit}
+      onSwap={onSwap}
+      onBackdrop={onBackdrop}
+      tray={
+        make && !full ? (
+          <>
+            <button onClick={onMa} title="間">
+              ・・
+            </button>
+            <button className="snd" onClick={() => onSE('')} title="SE">
+              ♪SE
+            </button>
+            <button onClick={enterShow} title="全画面で見る">
+              ⛶
+            </button>
+            <button className={legend ? 'on' : ''} onClick={() => setLegend((v) => !v)} title="さわりかた">
+              ?
+            </button>
+          </>
+        ) : null
+      }
+      total={full ? tl.total : undefined}
       title={atTop ? `${doc.genre}「${doc.title}」` : null}
-      onTap={show ? togglePlay : undefined}
+      onTap={full ? togglePlay : undefined}
     />
   );
 
-  // 「見せる」：3D空間だけ。触ると再生／停止、Esc か隅の × で戻る
-  if (show)
+  // 全画面プレビュー：3D空間だけ。触ると再生／停止、Esc か隅の × で戻る
+  if (full)
     return (
       <div className="stage-app mode-show">
         {stage}
@@ -312,13 +386,52 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
           aria-label="戻る"
           onClick={() => {
             setPlaying(false);
-            setMode('write');
+            setFull(false);
           }}
         >
           ×
         </button>
       </div>
     );
+
+  const sheet = (
+    <div className="sheet">
+      {LAYERS.map((l) => (
+        <button
+          key={l.id}
+          className={`ly-${l.id}${layers.has(l.id) ? ' on' : ''}`}
+          onClick={() =>
+            setLayers((s) => {
+              const n = new Set(s);
+              if (n.has(l.id)) n.delete(l.id);
+              else n.add(l.id);
+              return n;
+            })
+          }
+        >
+          {l.label}
+        </button>
+      ))}
+    </div>
+  );
+  const scriptView = (
+    <ScriptView
+      cast={cast}
+      items={items}
+      states={states}
+      cursor={cursor}
+      layers={mode === 'write' ? layers : new Set()}
+      openChip={openChip}
+      focusName={focusName}
+      scrollKey={scrollKey}
+      readOnly={make}
+      onOpenChip={setOpenChip}
+      onCursor={setCursor}
+      onEdit={onEdit}
+      onRemove={onRemove}
+      onMoveChip={onMoveChip}
+    />
+  );
 
   return (
     <div className={`stage-app app mode-${mode}`}>
@@ -336,13 +449,11 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
           </button>
         </span>
         <nav className="modes">
-          <button className={write ? 'on' : ''} onClick={() => setMode('write')}>
-            書く
-          </button>
-          <button onClick={enterShow}>見せる</button>
-          <button className={mode === 'hand' ? 'on' : ''} onClick={() => setMode('hand')}>
-            渡す
-          </button>
+          {MODES.map(([m, l]) => (
+            <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+              {l}
+            </button>
+          ))}
         </nav>
         <button className="theme" onClick={() => setTheme(theme === 'auto' ? 'light' : theme === 'light' ? 'dark' : 'auto')} aria-label="テーマ">
           {theme === 'auto' ? '◐' : theme === 'light' ? '○' : '●'}
@@ -350,62 +461,37 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       </header>
 
       <main>
-        {write && (
+        {make && (
           <>
             <section className="left">
               {stage}
-              <p className="legend">
-                人形 ⇆ 移動・袖へ＝ハケ・タップ＝話者・長押し＝名前と色　｜　バトン タップ＝明暗・長押し＝じわ　｜　◎＝ピン　｜　🔈 タップ＝C.I・長押し＝F.I　｜　♪ タップ＝C.O・長押し＝F.O
-              </p>
+              {legend && (
+                <p className="legend">
+                  人形：タップ＝しゃべる・ドラッグ＝動く・袖へ＝ハケ・長押し＝名前と色　｜　壁：タップ＝（動き）　｜　バトン：タップ＝明暗・長押し＝じわ　｜　◎＝ピン　｜　🔈：タップ＝C.I・長押し＝F.I　｜　♪：タップ＝C.O・長押し＝F.O
+                </p>
+              )}
             </section>
-            <section className="right">
-              <div className="sheet">
-                {LAYERS.map((l) => (
-                  <button
-                    key={l.id}
-                    className={`ly-${l.id}${layers.has(l.id) ? ' on' : ''}`}
-                    onClick={() =>
-                      setLayers((s) => {
-                        const n = new Set(s);
-                        if (n.has(l.id)) n.delete(l.id);
-                        else n.add(l.id);
-                        return n;
-                      })
-                    }
-                  >
-                    {l.label}
-                  </button>
-                ))}
-              </div>
-              <ScriptView
-                cast={cast}
-                items={items}
-                states={states}
-                cursor={cursor}
-                layers={layers}
-                openChip={openChip}
-                focusName={focusName}
-                scrollKey={scrollKey}
-                onOpenChip={setOpenChip}
-                onCursor={setCursor}
-                onEdit={onEdit}
-                onRemove={onRemove}
-                onMoveChip={onMoveChip}
-              />
-            </section>
+            <section className="right">{scriptView}</section>
           </>
+        )}
+        {mode === 'write' && (
+          <section className="right">
+            {sheet}
+            {scriptView}
+          </section>
         )}
         {mode === 'hand' && (
           <section className="hand">
-            {stage}
             <HandOff doc={doc} onImport={onImport} />
           </section>
         )}
       </main>
 
       <footer>
-        {write && <InputBar cast={cast} role={role} kind={kind} onRole={onTapRole} onKind={setKind} onSubmit={onSubmit} onMa={onMa} onSE={onSE} />}
-        <TimeBar cast={cast} items={items} states={states} tl={tl} playing={playing} onToggle={togglePlay} onSeek={onSeek} />
+        {mode === 'write' && (
+          <InputBar cast={cast} role={role} kind={kind} onRole={onTapRole} onKind={setKind} onSubmit={onSubmit} onMa={onMa} onSE={onSE} autoFocus />
+        )}
+        {mode !== 'hand' && <TimeBar cast={cast} items={items} states={states} tl={tl} playing={playing} onToggle={togglePlay} onSeek={onSeek} />}
       </footer>
     </div>
   );

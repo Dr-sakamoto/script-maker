@@ -21,6 +21,8 @@ type Props = {
   onEdit: (id: string, patch: Partial<Item>) => void;
   onRemove: (id: string) => void;
   onMoveChip: (id: string, beforeId: string | null) => void;
+  /** つくる：台本は「できていくもの」として見せるだけ（文字は舞台で打つ） */
+  readOnly?: boolean;
 };
 
 type ChipDrag = { id: string; x: number; y: number; over: string | null; text: string };
@@ -143,6 +145,7 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                   <LineBody
                     cast={p.cast}
                     it={body}
+                    readOnly={p.readOnly}
                     onSpeaker={() => p.onEdit(body.id, { w: cycle(lineRoles.map((c) => c.id), body.w) })}
                     onEdit={(patch) => p.onEdit(body.id, patch)}
                     onFocus={() => p.onCursor(row.body!)}
@@ -154,14 +157,15 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                       className="who"
                       style={{ color: member(p.cast, body.w)?.color }}
                       onClick={(e) => {
+                        if (p.readOnly) return;
                         e.stopPropagation();
                         p.onEdit(body.id, { w: cycle(actRoles, body.w) });
                       }}
                     >
-                      {member(p.cast, body.w)?.name ?? '・'}
+                      {member(p.cast, body.w)?.name ?? (p.readOnly ? '' : '・')}
                     </button>
                     {body.w && <span className="paren">、</span>}
-                    <AutoText value={body.x} onChange={(x) => p.onEdit(body.id, { x })} onFocus={() => p.onCursor(row.body!)} placeholder="動き" />
+                    <Txt readOnly={p.readOnly} value={body.x} onChange={(x) => p.onEdit(body.id, { x })} onFocus={() => p.onCursor(row.body!)} placeholder="動き" />
                     <span className="paren">）</span>
                   </>
                 ) : null}
@@ -191,9 +195,16 @@ export const ScriptView = memo(function ScriptView(p: Props) {
   );
 });
 
+/** 打てる文字か、見せるだけの文字か */
+function Txt(p: { readOnly?: boolean; value: string; onChange: (v: string) => void; onFocus: () => void; placeholder: string; className?: string }) {
+  if (p.readOnly) return <span className={`ro ${p.className ?? ''}`}>{p.value || '　'}</span>;
+  return <AutoText className={p.className} value={p.value} onChange={p.onChange} onFocus={p.onFocus} placeholder={p.placeholder} />;
+}
+
 function LineBody(p: {
   cast: CastMember[];
   it: Extract<Item, { t: 'line' }>;
+  readOnly?: boolean;
   onSpeaker: () => void;
   onEdit: (patch: Partial<Item>) => void;
   onFocus: () => void;
@@ -206,6 +217,7 @@ function LineBody(p: {
         className="who"
         style={{ color: m?.color }}
         onClick={(e) => {
+          if (p.readOnly) return;
           e.stopPropagation();
           p.onSpeaker();
         }}
@@ -213,11 +225,11 @@ function LineBody(p: {
         {m?.name ?? '？'}
       </button>
       <span className="quote">{prop ? '『' : '「'}</span>
-      <AutoText value={p.it.x} onChange={(x) => p.onEdit({ x })} onFocus={p.onFocus} placeholder="セリフ" />
+      <Txt readOnly={p.readOnly} value={p.it.x} onChange={(x) => p.onEdit({ x })} onFocus={p.onFocus} placeholder="セリフ" />
       <span className="quote">{prop ? '』' : '」'}</span>
-      <span className={`note${p.it.n ? '' : ' blank'}`}>
+      <span className={`note${p.it.n ? '' : ' blank'}${p.readOnly && !p.it.n ? ' gone' : ''}`}>
         <span className="paren">（</span>
-        <AutoText className="memo" value={p.it.n ?? ''} onChange={(n) => p.onEdit({ n: n || undefined })} onFocus={p.onFocus} placeholder="　" />
+        <Txt readOnly={p.readOnly} className="memo" value={p.it.n ?? ''} onChange={(n) => p.onEdit({ n: n || undefined })} onFocus={p.onFocus} placeholder="　" />
         <span className="paren">）</span>
       </span>
     </>

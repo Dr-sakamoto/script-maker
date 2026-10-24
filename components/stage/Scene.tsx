@@ -99,7 +99,7 @@ const Cone = forwardRef<Mesh, { from: number[]; to: number[] }>(function Cone({ 
 });
 
 /** 袖幕・床・ホリゾント・額縁 */
-export function StageSet() {
+export function StageSet({ onBackdrop }: { onBackdrop?: (e: ThreeEvent<PointerEvent>) => void }) {
   const curtain = useMemo(() => {
     const g = new PlaneGeometry(1.15, 4.2, 24, 1);
     const pos = g.attributes.position;
@@ -122,7 +122,7 @@ export function StageSet() {
         </mesh>
       ))}
       {/* ホリゾント */}
-      <mesh position={[0, 2.2, -2.2]} receiveShadow>
+      <mesh position={[0, 2.2, -2.2]} receiveShadow onPointerDown={onBackdrop}>
         <planeGeometry args={[11, 4.6]} />
         <meshStandardMaterial color="#8d97a8" roughness={1} />
       </mesh>

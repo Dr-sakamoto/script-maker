@@ -11,6 +11,7 @@ type Props = {
   onSubmit: (text: string) => void;
   onMa: () => void;
   onSE: (text: string) => void;
+  autoFocus?: boolean;
 };
 
 export function InputBar(p: Props) {
@@ -38,12 +39,23 @@ export function InputBar(p: Props) {
       <input
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={p.kind === 'line' ? `${m?.name ?? ''}のセリフ` : '動き'}
+        placeholder={p.kind === 'line' ? `${m?.name ?? ''}のセリフ　Enter 次へ・Tab 話者・Alt 「」⇔（）` : `${m?.name ?? ''}の動き　Enter 次へ・Tab 話者・Alt 「」⇔（）`}
+        autoFocus={p.autoFocus}
         enterKeyHint="send"
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          if (e.key === 'Enter') {
             e.preventDefault();
             send();
+          } else if (e.key === 'Tab') {
+            // これまでのエディタと同じ：Tab で次の話者、Shift+Tab で前の話者
+            e.preventDefault();
+            const d = e.shiftKey ? order.length - 1 : 1;
+            p.onRole(order[(order.indexOf(p.role) + d) % order.length]);
+          } else if (e.key === 'Alt') {
+            // Alt でセリフ ⇔ 動き
+            e.preventDefault();
+            p.onKind(p.kind === 'line' ? 'act' : 'line');
           }
         }}
       />

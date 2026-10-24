@@ -843,7 +843,7 @@ export default function HomePage() {
                   }}
                   className="bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 text-sm font-medium px-4 py-2 rounded-xl transition duration-150 border border-amber-900/50"
                 >
-                  舞台
+                  つくる
                 </button>
                 <button
                   onClick={triggerPrint}
@@ -1005,9 +1005,9 @@ export default function HomePage() {
                             <a
                               href={`/stage?id=${s.id}`}
                               className="text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 font-medium px-3 py-1.5 rounded-lg border border-amber-900/50 transition"
-                              title="人形劇で演出をつける"
+                              title="人形劇をいじって台本をつくる"
                             >
-                              舞台
+                              つくる
                             </a>
                             <button
                               onClick={() => deleteScript(s.id)}

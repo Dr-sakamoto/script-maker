@@ -31,6 +31,16 @@ export type StageProps = {
   /** 「見せる」：幕前に出す題 */
   title?: string | null;
   onTap?: () => void;
+  /** これを開いて打たせる（つくる：人形を触ったら吹き出し／動きをその場で打つ）。n を変えると開き直す */
+  autoEdit?: { id: string; n: number } | null;
+  /** 舞台の上で打ち終えた（空なら消す） */
+  onDoneEdit?: (id: string) => void;
+  /** セリフ「」⇄（動き）を入れ替える */
+  onSwap?: (id: string) => void;
+  /** 背景（ホリゾント）を触った：話者なしの（動き） */
+  onBackdrop?: () => void;
+  /** 舞台の隅に置く小さな道具（記号だけ） */
+  tray?: React.ReactNode;
   /** 人形の長押し：名前と色を変える */
   onCast?: (role: Role, patch: { name?: string; color?: string }) => void;
 };
@@ -76,6 +86,18 @@ export function Stage(p: StageProps) {
   const [pinMode, setPinMode] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [castEdit, setCastEdit] = useState<Role | null>(null);
+  const finish = (id: string) => {
+    setEditing(null);
+    p.onDoneEdit?.(id);
+  };
+  useEffect(() => {
+    const a = p.autoEdit;
+    if (!a) return;
+    if (p.bubble?.id === a.id) return setEditing('bubble');
+    const role = Object.entries(p.st.acts).find(([, v]) => v.id === a.id)?.[0];
+    if (role) setEditing(`act:${role}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.autoEdit?.id, p.autoEdit?.n]);
 
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -186,7 +208,10 @@ export function Stage(p: StageProps) {
     const m = member(p.cast, p.bubble.w);
     const prop = m?.kind === 'prop';
     const text = prop ? `『${p.bubble.x || '　'}』` : p.bubble.x || '　';
-    const b = box(text, fs + 1, Math.min(300, sz.w * 0.55), p.bubble.n ? fs * 1.2 : 0);
+    // 打っている間は入力欄2段ぶんの大きさを取って、ほかの文字を避けさせる
+    const typing = editing === 'bubble';
+    const b0 = box(text, fs + 1, Math.min(300, sz.w * 0.55), typing ? fs * 2 : p.bubble.n ? fs * 1.2 : 0);
+    const b = typing ? { w: Math.max(b0.w, Math.min(240, sz.w * 0.6)), h: b0.h } : b0;
     labels.push({ id: 'bubble', kind: 'bubble', speaking: true, x: head.x, y: head.y - 8, ...b, text, itemId: p.bubble.id, color: m?.color, note: p.bubble.n, role: speakerRole });
   }
   const rects = layoutLabels(labels);
@@ -218,7 +243,7 @@ export function Stage(p: StageProps) {
       <Canvas shadows dpr={[1, 2]} gl={{ antialias: true }} camera={{ fov: 34, position: [0, 2.2, 9] }}>
         <Rig halfW={halfW} />
         <color attach="background" args={['#0c0a0f']} />
-        <StageSet />
+        <StageSet onBackdrop={p.interactive && p.onBackdrop ? (e) => (e.stopPropagation(), p.onBackdrop!()) : undefined} />
         <Lights
           lit={p.st.lit}
           litFade={p.st.litFade}
@@ -319,12 +344,13 @@ export function Stage(p: StageProps) {
                 onClick={() => canEdit && setEditing(l.id)}
               >
                 {editing === l.id ? (
-                  <input
-                    autoFocus
-                    defaultValue={p.st.acts[l.role]?.x}
-                    onChange={(e) => p.onEdit?.(l.itemId, { x: e.target.value })}
-                    onBlur={() => setEditing(null)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                  <InlineEdit
+                    value={p.st.acts[l.role]?.x ?? ''}
+                    placeholder="動き"
+                    swapLabel="「」"
+                    onChange={(x) => p.onEdit?.(l.itemId, { x })}
+                    onSwap={p.onSwap && l.role !== NARRATOR ? () => p.onSwap!(l.itemId) : undefined}
+                    onDone={() => finish(l.itemId)}
                   />
                 ) : (
                   l.text
@@ -343,7 +369,8 @@ export function Stage(p: StageProps) {
                 <BubbleEdit
                   line={p.bubble}
                   onEdit={(patch) => p.onEdit?.(p.bubble!.id, patch)}
-                  onDone={() => setEditing(null)}
+                  onSwap={p.onSwap && member(p.cast, p.bubble.w)?.kind === 'puppet' ? () => p.onSwap!(p.bubble!.id) : undefined}
+                  onDone={() => finish(p.bubble!.id)}
                 />
               ) : (
                 <>
@@ -388,6 +415,8 @@ export function Stage(p: StageProps) {
           );
         })()}
 
+        {p.tray && <div className="tray">{p.tray}</div>}
+
         {hold && holdS >= HOLD_MIN && (
           <div className={`holdbar${hold.key.startsWith('batten') || hold.key.startsWith('pin') ? ' light' : ' sound'}`} style={{ left: hold.at.x, top: hold.at.y }}>
             <div className="fill" style={{ width: `${(Math.min(8, holdS) / 8) * 100}%` }} />
@@ -399,7 +428,9 @@ export function Stage(p: StageProps) {
   );
 }
 
-function BubbleEdit({ line, onEdit, onDone }: { line: Extract<Item, { t: 'line' }>; onEdit: (p: Partial<Item>) => void; onDone: () => void }) {
+const enter = (e: React.KeyboardEvent) => e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229;
+
+function BubbleEdit({ line, onEdit, onSwap, onDone }: { line: Extract<Item, { t: 'line' }>; onEdit: (p: Partial<Item>) => void; onSwap?: () => void; onDone: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div
@@ -409,9 +440,38 @@ function BubbleEdit({ line, onEdit, onDone }: { line: Extract<Item, { t: 'line' 
         if (!ref.current?.contains(e.relatedTarget as Node)) onDone();
       }}
     >
-      <input autoFocus defaultValue={line.x} placeholder="セリフ" onChange={(e) => onEdit({ x: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && onDone()} />
-      <input defaultValue={line.n ?? ''} placeholder="（演技メモ）" onChange={(e) => onEdit({ n: e.target.value || undefined })} onKeyDown={(e) => e.key === 'Enter' && onDone()} />
+      <input autoFocus defaultValue={line.x} placeholder="…" enterKeyHint="done" onChange={(e) => onEdit({ x: e.target.value })} onKeyDown={(e) => enter(e) && onDone()} />
+      <span className="bubble-row">
+        <input defaultValue={line.n ?? ''} placeholder="（　）" onChange={(e) => onEdit({ n: e.target.value || undefined })} onKeyDown={(e) => enter(e) && onDone()} />
+        {onSwap && (
+          <button className="swap" title="動きにする" onMouseDown={(e) => e.preventDefault()} onClick={onSwap}>
+            （）
+          </button>
+        )}
+      </span>
     </div>
+  );
+}
+
+/** （動き）をその場で打つ */
+function InlineEdit(p: { value: string; placeholder: string; swapLabel: string; onChange: (v: string) => void; onSwap?: () => void; onDone: () => void }) {
+  return (
+    <span className="inline-edit">
+      <input
+        autoFocus
+        defaultValue={p.value}
+        placeholder={p.placeholder}
+        enterKeyHint="done"
+        onChange={(e) => p.onChange(e.target.value)}
+        onBlur={(e) => !(e.relatedTarget as HTMLElement | null)?.classList.contains('swap') && p.onDone()}
+        onKeyDown={(e) => enter(e) && (e.target as HTMLInputElement).blur()}
+      />
+      {p.onSwap && (
+        <button className="swap" title="セリフにする" onMouseDown={(e) => e.preventDefault()} onClick={p.onSwap}>
+          {p.swapLabel}
+        </button>
+      )}
+    </span>
   );
 }
 
