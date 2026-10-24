@@ -4,6 +4,7 @@ import { PerspectiveCamera, Vector3 } from 'three';
 import { member } from '../../lib/stage/cast';
 import { circled } from '../../lib/stage/export';
 import { layoutLabels, type Label } from '../../lib/stage/layout';
+import { actParens } from '../../lib/stage/parens';
 import { NARRATOR, WING, type Place, type StageState } from '../../lib/stage/state';
 import type { CastMember, Item, PinNo, Role } from '../../lib/stage/types';
 import { BATTEN, camPose, FIXTURES, HEAD_Y, makeCamera, project, screenToPct, SPEAKER, WING_PEEK, worldX } from './geom';
@@ -170,14 +171,15 @@ export function Stage(p: StageProps) {
   const speakerRole = p.bubble ? (member(p.cast, p.bubble.w)?.holder ?? p.bubble.w) : null;
   const small = p.size === 'small';
   const fs = small ? 11 : p.size === 'big' ? Math.round(Math.min(18, Math.max(12, sz.w / 60))) : 14;
-  const labels: (Label & { text: string; itemId: string; color?: string; note?: string; role: Role })[] = [];
+  const labels: (Label & { text: string; itemId: string; color?: string; note?: string; role: Role; par?: ReturnType<typeof actParens> })[] = [];
   for (const [role, a] of Object.entries(p.st.acts)) {
     const isNarr = role === NARRATOR;
     if (!isNarr && !p.st.pos[role]?.on && !(drag?.role === role)) continue;
     const head = isNarr ? proj(0, 2.75, 0) : proj(worldX(shownPct(role)), HEAD_Y, 0);
-    const text = `（${a.x || '　'}）`;
+    const par = actParens(p.cast, isNarr ? undefined : role);
+    const text = `${par.open}${a.x || '　'}${par.close}`;
     const b = box(text, fs - 1, Math.min(300, sz.w * 0.45));
-    labels.push({ id: `act:${role}`, kind: 'act', speaking: role === speakerRole, x: head.x, y: head.y, ...b, text, itemId: a.id, role });
+    labels.push({ id: `act:${role}`, kind: 'act', speaking: role === speakerRole, x: head.x, y: head.y, ...b, text, itemId: a.id, role, par });
   }
   if (p.bubble && speakerRole) {
     const head = proj(worldX(shownPct(speakerRole)), HEAD_Y, 0);
@@ -278,7 +280,7 @@ export function Stage(p: StageProps) {
               style={
                 l.kind === 'bubble'
                   ? { px: fs + 1, maxW: l.w + 6, fg: '#1d1b19', bg: '#fffdf8', border: l.color, dashed: member(p.cast, p.bubble?.w)?.kind === 'prop', tail: l.x - rects[l.id].l, sub: l.note }
-                  : { px: fs - 1, maxW: l.w + 6, fg: '#f4f1ea' }
+                  : { px: fs - 1, maxW: l.w + 6, fg: '#f4f1ea', edge: l.par?.color ? { open: l.par.open, close: l.par.close, color: l.par.color } : undefined }
               }
             />
           ))}
@@ -325,7 +327,11 @@ export function Stage(p: StageProps) {
                     onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
                   />
                 ) : (
-                  l.text
+                  <>
+                    <span className="act-paren" style={{ color: l.par?.color }}>{l.par?.open}</span>
+                    {p.st.acts[l.role]?.x || '　'}
+                    <span className="act-paren" style={{ color: l.par?.color }}>{l.par?.close}</span>
+                  </>
                 )}
               </div>
             );

@@ -567,21 +567,21 @@
   padding: 0 2px 0 0;
   font-weight: 700;
 }
-.grow {
+.autogrow {
   display: inline-grid;
   width: max-content;
   max-width: 100%;
   min-width: 1em;
   vertical-align: top;
 }
-.grow::after {
+.autogrow::after {
   content: attr(data-v) ' ';
   visibility: hidden;
   white-space: pre-wrap;
   word-break: break-all;
 }
-.grow::after,
-.grow > .autotext {
+.autogrow::after,
+.autogrow > .autotext {
   grid-area: 1 / 1;
   font: inherit;
   line-height: 1.6;
@@ -613,7 +613,7 @@
   align-self: center;
   margin-left: 4px;
 }
-.note .grow {
+.note .autogrow {
   max-width: 16em;
 }
 .row:not(.here) .note.blank {
@@ -947,4 +947,13 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 4px 10px;
+}
+
+/* 動きの3重の（）：役の色。文字に縁を付けて暗い舞台でも読めるように */
+.act-paren {
+  font-weight: 800;
+  letter-spacing: -0.12em;
+}
+.act-label .act-paren {
+  text-shadow: 0 0 2px #000, 0 0 4px #000;
 }

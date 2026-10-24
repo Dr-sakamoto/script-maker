@@ -9,7 +9,7 @@ export function AutoText(p: {
   onEnter?: () => void;
 }) {
   return (
-    <span className="grow" data-v={p.value || p.placeholder || ''}>
+    <span className="autogrow" data-v={p.value || p.placeholder || ''}>
       <textarea
         rows={1}
         cols={1}

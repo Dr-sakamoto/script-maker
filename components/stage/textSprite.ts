@@ -10,6 +10,8 @@ export type TextStyle = {
   dashed?: boolean;
   tail?: number | null; // 吹き出しのしっぽの x（px、左端から）
   sub?: string; // 小さい2行目（演技メモ）
+  /** 本文の最初と最後の文字列だけ別の色で描く（動きの3重の（）） */
+  edge?: { open: string; close: string; color: string };
 };
 
 const FONT = `'Hiragino Sans','Noto Sans JP','Yu Gothic UI',system-ui,sans-serif`;
@@ -68,7 +70,7 @@ export function textTexture(text: string, s: TextStyle): { tex: CanvasTexture; w
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   let y = pad - (s.bg ? 2 : 0) + (lh - s.px) / 2;
-  for (const l of lines) {
+  lines.forEach((l, i) => {
     ctx.font = `600 ${s.px}px ${FONT}`;
     if (!s.bg) {
       ctx.lineWidth = 4;
@@ -77,8 +79,18 @@ export function textTexture(text: string, s: TextStyle): { tex: CanvasTexture; w
     }
     ctx.fillStyle = s.fg;
     ctx.fillText(l, w / 2, y);
+    // 頭と尻の（（（ ）））を役の色で塗り直す
+    const e = s.edge;
+    if (e) {
+      const left = w / 2 - ctx.measureText(l).width / 2;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = e.color;
+      if (i === 0 && l.startsWith(e.open)) ctx.fillText(e.open, left, y);
+      if (i === lines.length - 1 && l.endsWith(e.close)) ctx.fillText(e.close, left + ctx.measureText(l.slice(0, l.length - e.close.length)).width, y);
+      ctx.textAlign = 'center';
+    }
     y += lh;
-  }
+  });
   ctx.font = `${subPx}px ${FONT}`;
   ctx.fillStyle = '#6d6862';
   for (const l of subLines) {

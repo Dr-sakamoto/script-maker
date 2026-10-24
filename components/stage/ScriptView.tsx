@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { member, puppets } from '../../lib/stage/cast';
 import { groupRows } from '../../lib/stage/edit';
 import { moveSentence } from '../../lib/stage/export';
+import { actParens } from '../../lib/stage/parens';
 import { initialState, type StageState } from '../../lib/stage/state';
 import type { CastMember, CueOp, Item, PinNo } from '../../lib/stage/types';
 import { AutoText } from './AutoText';
@@ -149,7 +150,9 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                   />
                 ) : body.t === 'act' ? (
                   <>
-                    <span className="paren">（</span>
+                    <span className="paren act-paren" style={{ color: actParens(p.cast, body.w).color }}>
+                      {actParens(p.cast, body.w).open}
+                    </span>
                     <button
                       className="who"
                       style={{ color: member(p.cast, body.w)?.color }}
@@ -162,7 +165,9 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                     </button>
                     {body.w && <span className="paren">、</span>}
                     <AutoText value={body.x} onChange={(x) => p.onEdit(body.id, { x })} onFocus={() => p.onCursor(row.body!)} placeholder="動き" />
-                    <span className="paren">）</span>
+                    <span className="paren act-paren" style={{ color: actParens(p.cast, body.w).color }}>
+                      {actParens(p.cast, body.w).close}
+                    </span>
                   </>
                 ) : null}
                 {p.cursor === row.body && (
