@@ -257,7 +257,6 @@
   position: absolute;
   pointer-events: auto;
   color: #f4f1ea;
-  text-shadow: 0 1px 2px #000, 0 0 6px #000;
   text-align: center;
   line-height: 1.4;
   padding: 5px 9px;
@@ -949,11 +948,13 @@
   padding: 4px 10px;
 }
 
-/* 動きの3重の（）：役の色。文字に縁を付けて暗い舞台でも読めるように */
-.act-paren {
-  font-weight: 800;
-  letter-spacing: -0.12em;
-}
-.act-label .act-paren {
-  text-shadow: 0 0 2px #000, 0 0 4px #000;
+/* 動き：白い文字・黒の縁・その役の色の縁の3層（--ring が無ければ白と黒の2層） */
+.act-label {
+  text-shadow:
+    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+    0 -1.5px 0 #000, 0 1.5px 0 #000, -1.5px 0 0 #000, 1.5px 0 0 #000,
+    -2.5px -2.5px 0 var(--ring, #0000), 2.5px -2.5px 0 var(--ring, #0000),
+    -2.5px 2.5px 0 var(--ring, #0000), 2.5px 2.5px 0 var(--ring, #0000),
+    0 -3px 0 var(--ring, #0000), 0 3px 0 var(--ring, #0000),
+    -3px 0 0 var(--ring, #0000), 3px 0 0 var(--ring, #0000);
 }
