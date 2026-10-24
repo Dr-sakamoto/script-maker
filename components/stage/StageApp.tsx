@@ -174,7 +174,13 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   );
 
   const onMove = (r: Role, pl: Place) =>
-    doTouch(() => (pl.on ? { t: 'move', w: r, in: true, x: pl.x } : { t: 'move', w: r, in: false, side: pl.side }));
+    doTouch(() =>
+      pl.on
+        ? { t: 'move', w: r, in: true, x: pl.x, ...(pl.z != null ? { z: pl.z } : {}), ...(pl.r != null ? { r: pl.r } : {}) }
+        : { t: 'move', w: r, in: false, side: pl.side },
+    );
+  /** 小道具を人形に持たせる */
+  const onHold = (prop: Role, by: Role) => doTouch((s) => (s.held[prop] === by ? null : { t: 'hold', w: prop, by }));
   /** つくる：舞台の上でそのまま打たせる */
   const openNew = (it: NewItem) => {
     const { doc, cursor } = ref.current;
@@ -260,16 +266,34 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   };
   /** 照明卓：全体の明転・暗転（じわは秒数） */
   const onLightAll = (on: boolean, fade: number) => doTouch((s) => (s.lit === on ? null : { t: 'light', on, ...(fade ? { fade } : {}) }));
+  // じわの秒数は「かく」のチップで変える（つくるでは長押しで秒数を決めない）
   /** 箱から舞台へ：落としたところに出す／置く */
   const onDropFromBox = (id: Role, cx: number, cy: number) => {
     const x = stageApi.current?.pctAt(cx, cy);
     if (x == null) return;
+    const s = ref.current.cursor >= 0 ? states[ref.current.cursor] : init;
+    // 小道具を人形の上に落としたら、その人形が持つ
+    if (member(cast, id)?.kind === 'prop') {
+      const by = puppets(cast)
+        .filter((c) => s.pos[c.id]?.on)
+        .map((c) => ({ id: c.id, d: Math.abs((s.pos[c.id] as { x: number }).x - x) }))
+        .filter((c) => c.d < 7)
+        .sort((a, b) => a.d - b.d)[0];
+      if (by) return onHold(id, by.id);
+    }
     onMove(id, { on: true, x: Math.min(100 - WING - 1, Math.max(WING + 1, x)) });
   };
   /** 小道具箱の＋：新しい小道具（色は自動） */
-  const onAddProp = (name: string) => {
+  const onAddProp = (name: string, kind: 'prop' | 'set') => {
     const d = ref.current.doc;
-    const m: CastMember = { id: uid(), name, short: shortName(name), color: PALETTE[d.cast.length % PALETTE.length], kind: 'prop' };
+    const m: CastMember = {
+      id: uid(),
+      name,
+      short: shortName(name),
+      color: PALETTE[d.cast.length % PALETTE.length],
+      kind,
+      ...(kind === 'set' ? { shape: 'free' as const, home: 'R' as const } : {}),
+    };
     dispatch({ type: 'commit', doc: { ...d, cast: [...d.cast, m] } });
   };
   const onSoundDone = (id: string) => {
@@ -375,6 +399,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       apiRef={stageApi}
       onEdit={onEdit}
       onCast={onCast}
+      onHold={onHold}
       autoEdit={autoEdit}
       onDoneEdit={onDoneEdit}
       onSwap={onSwap}

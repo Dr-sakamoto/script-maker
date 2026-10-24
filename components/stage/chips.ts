@@ -46,10 +46,12 @@ export function chipLook(cast: CastMember[], it: Item, prev: StageState): ChipLo
       return { text: `♪SE${it.x ? ` ${it.x.slice(0, 6)}` : ''}`, tone: 'sound', filled: false };
     case 'ma':
       return { text: `・・ ${it.s}″`, tone: 'mono', filled: false };
+    case 'hold':
+      return { text: `${member(cast, it.by)?.short ?? '?'}✋${member(cast, it.w)?.short ?? '?'}`, tone: 'mono', filled: false };
     case 'move': {
       const who = member(cast, it.w)?.short ?? '?';
       const k = classifyMove(prev, it);
-      if (member(cast, it.w)?.kind === 'prop') return { text: it.in ? `${who}↓${areaOf(it.x)[0]}` : `${who}↑`, tone: 'mono', filled: false };
+      if (member(cast, it.w)?.kind !== 'puppet') return { text: it.in ? `${who}↓${areaOf(it.x)[0]}` : `${who}↑`, tone: 'mono', filled: false };
       if (!it.in) return { text: `${who} ハケ`, tone: 'mono', filled: false };
       if (k === 'enter') return { text: `${who} 出`, tone: 'mono', filled: true };
       if (k === 'board') return { text: `${who} 板付`, tone: 'mono', filled: false };

@@ -22,10 +22,12 @@ export type Character = {
   costume?: string;
   /** 舞台（/stage）の人形の色。未指定なら登場順に自動 */
   color?: string;
-  /** 'prop' は他の役が持つ小道具（声は音源）。未指定は人形 */
-  kind?: 'puppet' | 'prop';
-  /** 小道具を持っている役の id */
+  /** 'prop' は手に持てる小道具、'set' は置くだけの大道具。未指定は人形 */
+  kind?: 'puppet' | 'prop' | 'set';
+  /** 最初から小道具を持っている役の id */
   holder?: string;
+  /** 大道具の形（机・椅子・それ以外は点線の円） */
+  shape?: 'desk' | 'chair' | 'free';
 };
 
 export type Sound = {

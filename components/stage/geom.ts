@@ -58,3 +58,14 @@ export function screenToWorld(c: PerspectiveCamera, w: number, h: number, sx: nu
   const perPx = (2 * Math.tan(((c.fov / 2) * Math.PI) / 180) * dist) / h;
   return { p: hit, perPx };
 }
+
+/** 画面上の点を床（y=0）の上の点に。大道具を奥行きまで含めて動かすのに使う */
+export function screenToFloor(c: PerspectiveCamera, w: number, h: number, sx: number, sy: number): { pct: number; z: number } | null {
+  const r = new Raycaster();
+  r.setFromCamera(new Vector2((sx / w) * 2 - 1, -(sy / h) * 2 + 1), c);
+  const hit = new Vector3();
+  if (!r.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), 0), hit)) return null;
+  return { pct: Math.min(100, Math.max(0, pctX(hit.x))), z: hit.z };
+}
+/** 大道具を置ける奥行き */
+export const SET_Z = { min: -1.7, max: 1.6 };

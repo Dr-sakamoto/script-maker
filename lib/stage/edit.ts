@@ -19,6 +19,8 @@ export function insertAfter(items: Item[], cursor: number, it: NewItem | Item): 
 export function targetKey(it: NewItem | Item): string | null {
   switch (it.t) {
     case 'move':
+    case 'hold':
+      // 持つ／置くは同じ小道具への操作なので、続けて触れば上書き
       return `move:${it.w}`;
     case 'light':
       return `light:${it.p ?? 'all'}`;

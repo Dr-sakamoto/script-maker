@@ -6,8 +6,9 @@ import { circled } from '../../lib/stage/export';
 import { layoutLabels, type Label } from '../../lib/stage/layout';
 import { NARRATOR, WING, type Place, type StageState } from '../../lib/stage/state';
 import type { CastMember, Item, PinNo, Role } from '../../lib/stage/types';
-import { BATTEN, camPose, FIXTURES, HEAD_Y, makeCamera, project, screenToPct, WING_PEEK, worldX } from './geom';
+import { BATTEN, camPose, FIXTURES, HEAD_Y, makeCamera, project, screenToFloor, screenToPct, SET_Z, WING_PEEK, worldX } from './geom';
 import { NameTag, Prop3D, Puppet3D } from './Puppet3D';
+import { Set3D } from './Set3D';
 import { ProgressLine, ScreenSprite } from './Sprites3D';
 import { Batten, Lights, StageSet } from './Scene';
 
@@ -41,15 +42,14 @@ export type StageProps = {
   apiRef?: React.MutableRefObject<{ pctAt: (clientX: number, clientY: number) => number | null } | null>;
   /** 舞台の隅に置く小さな道具（記号だけ） */
   tray?: React.ReactNode;
+  /** 小道具を人形に持たせる（人形の上で離した） */
+  onHold?: (prop: Role, by: Role) => void;
   /** 人形の長押し：名前と色を変える */
   onCast?: (role: Role, patch: { name?: string; color?: string }) => void;
 };
 
-type Hold = { key: string; t0: number; at: { x: number; y: number } };
 type Drag = { role: Role; pct: number; moved: boolean };
 
-const HOLD_MIN = 0.35;
-const holdSec = (d: number) => Math.min(8, Math.max(1, Math.round(d)));
 
 function Rig({ halfW }: { halfW: number }) {
   const { camera, size } = useThree();
@@ -81,8 +81,10 @@ export function Stage(p: StageProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const [sz, setSz] = useState({ w: 600, h: 340 });
   const [drag, setDrag] = useState<Drag | null>(null);
-  const [hold, setHold] = useState<Hold | null>(null);
-  const [, tick] = useState(0);
+  /** 向きを変えるために選んでいる大道具 */
+  const [selSet, setSelSet] = useState<Role | null>(null);
+  /** 大道具を動かしている最中の位置・向き */
+  const [moving, setMoving] = useState<{ role: Role; pct: number; z: number; r: number } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [castEdit, setCastEdit] = useState<Role | null>(null);
   const finish = (id: string) => {
@@ -107,17 +109,6 @@ export function Stage(p: StageProps) {
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!hold) return;
-    let raf = 0;
-    const loop = () => {
-      tick((n) => n + 1);
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [hold]);
-
   const halfW = p.size === 'big' ? 4.4 : 4.7;
   const cam = useMemo(() => makeCamera(sz.w, sz.h, halfW), [sz, halfW]);
   if (p.apiRef)
@@ -133,34 +124,20 @@ export function Stage(p: StageProps) {
   const roles = p.cast.filter((c) => c.kind === 'puppet');
   // 舞台に置いてある小道具（掴んでいる最中も）
   const floorProps = p.cast.filter((c) => c.kind === 'prop' && (p.st.pos[c.id]?.on || (drag?.role === c.id && drag.moved)));
-  const shownPct = (r: Role) => {
+  const sets = p.cast.filter((c) => c.kind === 'set');
+  const shownPct = (r: Role): number => {
     if (drag?.role === r && drag.moved) return drag.pct;
+    if (moving?.role === r) return moving.pct;
+    const by = p.st.held[r];
+    if (by && !(drag?.role === r)) return shownPct(by);
     const pl = p.st.pos[r];
     if (!pl) return WING_PEEK.L;
     return pl.on ? pl.x : WING_PEEK[pl.side];
   };
   const isGhost = (r: Role) => {
     if (drag?.role === r && drag.moved) return drag.pct < WING || drag.pct > 100 - WING;
+    if (moving?.role === r) return moving.pct < WING || moving.pct > 100 - WING;
     return !p.st.pos[r]?.on;
-  };
-
-  /** タップ（短押し）か長押し（秒数）かを、離したときに判定 */
-  const press = (key: string, at: { x: number; y: number }, done: (fade: number) => void) => (e: ThreeEvent<PointerEvent> | React.PointerEvent) => {
-    e.stopPropagation();
-    const t0 = performance.now();
-    setHold({ key, t0, at });
-    const end = (ok: boolean) => () => {
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onCancel);
-      setHold(null);
-      if (!ok) return;
-      const d = (performance.now() - t0) / 1000;
-      done(d < HOLD_MIN ? 0 : holdSec(d));
-    };
-    const onUp = end(true);
-    const onCancel = end(false);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onCancel);
   };
 
   /** 人形を掴む。動かさずに離したらタップ（話者にする）、長押しなら名前と色。卵を掴んでも持ち主が動く */
@@ -185,6 +162,15 @@ export function Stage(p: StageProps) {
         if (performance.now() - t0 > 500 && p.onCast) return setCastEdit(tapRole);
         return p.onTapRole?.(tapRole);
       }
+      // 小道具を人形の上で離したら、その人形が持つ
+      if (member(p.cast, r)?.kind === 'prop' && p.onHold) {
+        const by = roles
+          .filter((o) => p.st.pos[o.id]?.on)
+          .map((o) => ({ id: o.id, d: Math.abs((p.st.pos[o.id] as { x: number }).x - d.pct) }))
+          .filter((o) => o.d < 7)
+          .sort((a, b) => a.d - b.d)[0];
+        if (by) return p.onHold(r, by.id);
+      }
       // 人形箱・小道具箱の上で離したら、近い袖へハケる／片付ける
       const overBox = !!(document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest('[data-drop="box"]');
       const place: Place = overBox
@@ -199,6 +185,89 @@ export function Stage(p: StageProps) {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+  };
+
+  /** 大道具を掴んで床の上を動かす（奥行きも）。動かさずに離したら選ぶ（向きを変えるつまみが出る） */
+  const grabSet = (r: Role) => (e: ThreeEvent<PointerEvent>) => {
+    if (!p.interactive) return;
+    e.stopPropagation();
+    const rect = wrap.current!.getBoundingClientRect();
+    const pl = p.st.pos[r];
+    const start = pl?.on ? { pct: pl.x, z: pl.z ?? 0.6, r: pl.r ?? 0 } : { pct: shownPct(r), z: setZ(r), r: 0 };
+    const f0 = screenToFloor(cam, sz.w, sz.h, e.nativeEvent.clientX - rect.left, e.nativeEvent.clientY - rect.top);
+    let cur = { role: r, ...start };
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      const f = screenToFloor(cam, sz.w, sz.h, ev.clientX - rect.left, ev.clientY - rect.top);
+      if (!f || !f0) return;
+      if (!moved && Math.abs(f.pct - f0.pct) < 1.5 && Math.abs(f.z - f0.z) < 0.08) return;
+      moved = true;
+      cur = {
+        role: r,
+        pct: Math.min(100, Math.max(0, start.pct + f.pct - f0.pct)),
+        z: Math.min(SET_Z.max, Math.max(SET_Z.min, start.z + f.z - f0.z)),
+        r: start.r,
+      };
+      setMoving(cur);
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      setMoving(null);
+      if (!moved) return setSelSet((v) => (v === r ? null : r));
+      const overBox = !!(document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest('[data-drop="box"]');
+      const off = overBox || cur.pct < WING || cur.pct > 100 - WING;
+      p.onMove?.(r, off ? { on: false, side: cur.pct < 50 ? 'L' : 'R' } : { on: true, x: Math.round(cur.pct), z: Math.round(cur.z * 20) / 20, r: cur.r });
+      if (off) setSelSet(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  /** つまみを回して向きを変える（15度きざみ） */
+  const rotateSet = (r: Role) => (e: ThreeEvent<PointerEvent>) => {
+    if (!p.interactive) return;
+    e.stopPropagation();
+    const pl = p.st.pos[r];
+    if (!pl?.on) return;
+    const rect = wrap.current!.getBoundingClientRect();
+    const cx = worldX(pl.x);
+    const cz = pl.z ?? 0.6;
+    let cur = { role: r, pct: pl.x, z: cz, r: pl.r ?? 0 };
+    const move = (ev: PointerEvent) => {
+      const f = screenToFloor(cam, sz.w, sz.h, ev.clientX - rect.left, ev.clientY - rect.top);
+      if (!f) return;
+      const ang = (Math.atan2(worldX(f.pct) - cx, f.z - cz) * 180) / Math.PI;
+      cur = { ...cur, r: (((Math.round(-ang / 15) * 15) % 360) + 360) % 360 };
+      setMoving(cur);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      setMoving(null);
+      if (cur.r !== (pl.r ?? 0)) p.onMove?.(r, { on: true, x: pl.x, z: pl.z, r: cur.r });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  /** 袖に置いてある大道具の x（少しずつずらして重ならないように） */
+  const wingX = (r: Role) => {
+    const side = p.st.pos[r]?.on ? 'R' : ((p.st.pos[r] as { side?: 'L' | 'R' })?.side ?? 'R');
+    const i = sets.filter((c) => { const q = p.st.pos[c.id]; return !q?.on && (q?.side ?? 'R') === side; }).findIndex((c) => c.id === r);
+    return side === 'L' ? 4 + i * 3 : 96 - i * 3;
+  };
+  /** 袖に置いてある大道具は、奥へ向かって並べる */
+  const setZ = (r: Role) => {
+    const pl = p.st.pos[r];
+    if (pl?.on) return pl.z ?? 0.6;
+    const side = pl?.side ?? 'R';
+    const i = sets.filter((c) => { const q = p.st.pos[c.id]; return !q?.on && (q?.side ?? 'R') === side; }).findIndex((c) => c.id === r);
+    return 1.1 - i * 1.0;
   };
 
   // --- 舞台の上の文字（吹き出し・動き）
@@ -236,7 +305,6 @@ export function Stage(p: StageProps) {
   }
 
   const playing = Object.keys(p.st.playing).map(Number).sort((a, b) => a - b);
-  const holdS = hold ? (performance.now() - hold.t0) / 1000 : 0;
   const wingL = proj(worldX(WING), 0, 0).x;
   const wingR = proj(worldX(100 - WING), 0, 0).x;
   const dragWing = drag?.moved ? (drag.pct < WING ? 'L' : drag.pct > 100 - WING ? 'R' : null) : null;
@@ -263,7 +331,10 @@ export function Stage(p: StageProps) {
           interactive={p.interactive}
           pins={p.st.pins}
           lit={p.st.lit}
-          onPin={(i) => press(`pin${i}`, proj(FIXTURES[i], BATTEN.y - 0.55, BATTEN.z), (f) => p.onLight?.((i + 1) as PinNo, f))}
+          onPin={(i) => (e) => {
+            e.stopPropagation();
+            p.onLight?.((i + 1) as PinNo, 0);
+          }}
         />
         {/* 舞台に出ていない人形は人形箱にいるので、袖には出さない（掴んでいる間だけ見せる） */}
         {roles.filter((r) => p.st.pos[r.id]?.on || (drag?.role === r.id && drag.moved)).map((r) => {
@@ -271,7 +342,7 @@ export function Stage(p: StageProps) {
           const others = roles.filter((o) => o.id !== r.id && p.st.pos[o.id]?.on).map((o) => shownPct(o.id));
           const near = others.sort((a, b) => Math.abs(a - pct) - Math.abs(b - pct))[0];
           const face = near == null ? 0 : Math.sign(near - pct);
-          const prop = p.cast.find((c) => c.kind === 'prop' && c.holder === r.id && !p.st.pos[c.id]?.on);
+          const props = p.cast.filter((c) => c.kind === 'prop' && p.st.held[c.id] === r.id && !(drag?.role === c.id && drag.moved));
           return (
             <Puppet3D
               key={r.id}
@@ -280,13 +351,32 @@ export function Stage(p: StageProps) {
               face={face}
               ghost={isGhost(r.id)}
               speaking={p.bubble?.w === r.id}
-              holding={prop}
+              holding={props}
               marker={p.interactive && p.inputRole === r.id ? r.color : null}
-              propMarker={p.interactive && prop && p.inputRole === prop.id ? prop.color : null}
+              propMarker={p.interactive ? (props.find((c) => c.id === p.inputRole)?.color ?? null) : null}
               reduced={p.reduced}
               dragging={drag?.role === r.id && drag.moved}
               onDown={p.interactive ? grab(r.id) : undefined}
-              onPropDown={p.interactive && prop ? grab(r.id, prop.id) : undefined}
+              onPropDown={p.interactive ? (id) => grab(id) : undefined}
+            />
+          );
+        })}
+        {sets.map((c) => {
+          const pl = p.st.pos[c.id];
+          const sd = moving?.role === c.id ? moving : null;
+          return (
+            <Set3D
+              key={c.id}
+              member={c}
+              x={worldX(sd ? sd.pct : pl?.on ? pl.x : wingX(c.id))}
+              z={sd ? sd.z : setZ(c.id)}
+              r={sd ? sd.r : pl?.on ? (pl.r ?? 0) : 0}
+              ghost={isGhost(c.id)}
+              selected={p.interactive && selSet === c.id && !!pl?.on}
+              dragging={!!sd}
+              reduced={p.reduced}
+              onDown={p.interactive ? grabSet(c.id) : undefined}
+              onRotateDown={rotateSet(c.id)}
             />
           );
         })}
@@ -409,12 +499,6 @@ export function Stage(p: StageProps) {
 
         {p.tray && <div className="tray">{p.tray}</div>}
 
-        {hold && holdS >= HOLD_MIN && (
-          <div className={`holdbar${hold.key.startsWith('batten') || hold.key.startsWith('pin') ? ' light' : ' sound'}`} style={{ left: hold.at.x, top: hold.at.y }}>
-            <div className="fill" style={{ width: `${(Math.min(8, holdS) / 8) * 100}%` }} />
-            <span>{holdSec(holdS)}″</span>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -11,56 +11,16 @@ import { Track } from './TimeBar';
  * 左上＝音源プレーヤー、左下＝人形箱、右上＝照明卓、右下＝小道具箱、下＝時間軸。
  */
 
-const HOLD_MIN = 0.35;
-const holdSec = (d: number) => Math.min(8, Math.max(1, Math.round(d)));
-
-/** タップか長押し（押した秒数）か。押している間は秒数のバーが伸びる */
-function HoldButton(p: { className?: string; title?: string; onPress: (sec: number) => void; children: React.ReactNode; disabled?: boolean }) {
-  const [held, setHeld] = useState<number | null>(null);
-  const t0 = useRef(0);
-  useEffect(() => {
-    if (held == null) return;
-    let raf = 0;
-    const f = () => {
-      setHeld((performance.now() - t0.current) / 1000);
-      raf = requestAnimationFrame(f);
-    };
-    raf = requestAnimationFrame(f);
-    return () => cancelAnimationFrame(raf);
-  }, [held != null]); // eslint-disable-line react-hooks/exhaustive-deps
+/** 触ったら1回。長押しで秒数を決める操作は置かない（秒数は「かく」のチップで） */
+function Tap(p: { className?: string; title?: string; onPress: () => void; children: React.ReactNode; disabled?: boolean }) {
   return (
-    <button
-      className={`hold ${p.className ?? ''}`}
-      title={p.title}
-      disabled={p.disabled}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        t0.current = performance.now();
-        setHeld(0);
-        const up = (ev: PointerEvent) => {
-          window.removeEventListener('pointerup', up);
-          window.removeEventListener('pointercancel', up);
-          setHeld(null);
-          if (ev.type === 'pointercancel') return;
-          const d = (performance.now() - t0.current) / 1000;
-          p.onPress(d < HOLD_MIN ? 0 : holdSec(d));
-        };
-        window.addEventListener('pointerup', up);
-        window.addEventListener('pointercancel', up);
-      }}
-    >
+    <button className={p.className} title={p.title} disabled={p.disabled} onClick={p.onPress}>
       {p.children}
-      {held != null && held >= HOLD_MIN && (
-        <span className="holdfill">
-          <i style={{ width: `${(Math.min(8, held) / 8) * 100}%` }} />
-          <b>{holdSec(held)}″</b>
-        </span>
-      )}
     </button>
   );
 }
 
-/** 音源プレーヤー：本体を叩く＝新しい音源を入れる（長押し＝F.I）、॥＝止める（長押し＝F.O） */
+/** 音源プレーヤー：網を叩く＝新しい音源を入れる（C.I）、॥＝止める（C.O） */
 export function SoundDevice(p: {
   st: StageState;
   cueNames: Record<number, string>;
@@ -107,38 +67,38 @@ export function SoundDevice(p: {
         </div>
         <div className="keys">
           {playing.map((n) => (
-            <HoldButton key={n} className="stop" title={`音源${circled(n)}を止める（長押し＝F.O）`} disabled={!p.interactive} onPress={(f) => p.onStop(n, f)}>
+            <Tap key={n} className="stop" title={`音源${circled(n)}を止める`} disabled={!p.interactive} onPress={() => p.onStop(n, 0)}>
               ॥{circled(n)}
-            </HoldButton>
+            </Tap>
           ))}
           <button className="se" disabled={!p.interactive} onClick={p.onSE} title="SE">
             SE
           </button>
         </div>
       </div>
-      <HoldButton className="grill" title="新しい音源（長押し＝F.I）" disabled={!p.interactive} onPress={p.onNew}>
+      <Tap className="grill" title="新しい音源" disabled={!p.interactive} onPress={() => p.onNew(0)}>
         <span />
-      </HoldButton>
+      </Tap>
     </div>
   );
 }
 
-/** 照明卓：全体の明転・暗転・じわ（じわは長押しの秒数、タップなら3秒） */
+/** 照明卓：全体の明転・暗転・じわ（じわは3秒。変えるなら「かく」のチップで） */
 export function LightConsole(p: { st: StageState; interactive: boolean; onLight: (on: boolean, fade: number) => void }) {
   return (
     <div className="dev light">
-      <HoldButton className={`big${p.st.lit ? ' lit' : ''}`} disabled={!p.interactive} onPress={() => p.onLight(true, 0)}>
+      <Tap className={`big${p.st.lit ? ' lit' : ''}`} disabled={!p.interactive} onPress={() => p.onLight(true, 0)}>
         明転
-      </HoldButton>
-      <HoldButton className={`big${!p.st.lit ? ' lit' : ''}`} disabled={!p.interactive} onPress={() => p.onLight(false, 0)}>
+      </Tap>
+      <Tap className={`big${!p.st.lit ? ' lit' : ''}`} disabled={!p.interactive} onPress={() => p.onLight(false, 0)}>
         暗転
-      </HoldButton>
-      <HoldButton disabled={!p.interactive} onPress={(f) => p.onLight(true, f || 3)}>
+      </Tap>
+      <Tap disabled={!p.interactive} onPress={() => p.onLight(true, 3)}>
         じわ明
-      </HoldButton>
-      <HoldButton disabled={!p.interactive} onPress={(f) => p.onLight(false, f || 3)}>
+      </Tap>
+      <Tap disabled={!p.interactive} onPress={() => p.onLight(false, 3)}>
         じわ暗
-      </HoldButton>
+      </Tap>
     </div>
   );
 }
@@ -197,12 +157,21 @@ export function CastBox(p: { cast: CastMember[]; st: StageState; interactive: bo
   );
 }
 
-/** 小道具箱：引っぱり出す＝置く、舞台から箱に入れる＝片付ける、＋＝新しい小道具 */
-export function PropBox(p: { cast: CastMember[]; st: StageState; interactive: boolean; onDrop: (id: Role, cx: number, cy: number) => void; onAdd: (name: string) => void }) {
+/**
+ * 小道具箱：引っぱり出す＝置く／人形の上に落とす＝持たせる、舞台から箱に入れる＝片付ける。
+ * ＋で足すとき、✋（手に持つ＝小道具）か ▭（置くだけ＝大道具。袖に立つ点線の円）かを選ぶ
+ */
+export function PropBox(p: {
+  cast: CastMember[];
+  st: StageState;
+  interactive: boolean;
+  onDrop: (id: Role, cx: number, cy: number) => void;
+  onAdd: (name: string, kind: 'prop' | 'set') => void;
+}) {
   const { start, ghostEl } = useDragOut(p.onDrop);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<'prop' | 'set' | null>(null);
   // 誰かが持っている小道具（卵など）は箱に入れない
-  const off = p.cast.filter((c) => c.kind === 'prop' && !c.holder && !p.st.pos[c.id]?.on);
+  const off = p.cast.filter((c) => c.kind === 'prop' && !p.st.held[c.id] && !p.st.pos[c.id]?.on);
   return (
     <div className="dev box props" data-drop="box">
       <div className="inbox">
@@ -212,19 +181,29 @@ export function PropBox(p: { cast: CastMember[]; st: StageState; interactive: bo
           </button>
         ))}
         {adding ? (
-          <input
-            className="thing new"
-            autoFocus
-            placeholder="…"
-            enterKeyHint="done"
-            onBlur={(e) => {
-              if (e.target.value.trim()) p.onAdd(e.target.value.trim());
-              setAdding(false);
-            }}
-            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && (e.target as HTMLInputElement).blur()}
-          />
+          <span className="adding">
+            <span className="kinds">
+              <button className={adding === 'prop' ? 'on' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => setAdding('prop')} title="手に持つ（小道具）">
+                ✋
+              </button>
+              <button className={adding === 'set' ? 'on' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => setAdding('set')} title="置くだけ（大道具）">
+                ▭
+              </button>
+            </span>
+            <input
+              className="thing new"
+              autoFocus
+              placeholder="…"
+              enterKeyHint="done"
+              onBlur={(e) => {
+                if (e.target.value.trim()) p.onAdd(e.target.value.trim(), adding);
+                setAdding(null);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && (e.target as HTMLInputElement).blur()}
+            />
+          </span>
         ) : (
-          <button className="thing add" disabled={!p.interactive} onClick={() => setAdding(true)} title="小道具を足す">
+          <button className="thing add" disabled={!p.interactive} onClick={() => setAdding('prop')} title="道具を足す">
             ＋
           </button>
         )}

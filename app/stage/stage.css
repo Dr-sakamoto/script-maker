@@ -1189,6 +1189,8 @@
   background: #e8fff8;
 }
 .dev .grill {
+  position: relative;
+  overflow: hidden;
   height: 48px;
   border: 3px solid #111;
   border-radius: 8px;
@@ -1365,4 +1367,25 @@
     gap: 8px;
     padding: 8px;
   }
+}
+.dev .adding {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dev .adding .kinds {
+  display: inline-flex;
+  border: 3px solid #111;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.dev .adding .kinds button {
+  border: 0;
+  background: #fff;
+  padding: 2px 8px;
+  font-size: 15px;
+}
+.dev .adding .kinds button.on {
+  background: #111;
+  color: #fff;
 }

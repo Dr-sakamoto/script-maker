@@ -49,7 +49,7 @@ describe('ネタ管理との橋渡し', () => {
   it('登場人物の順に○●が付き、色が無ければ自動で付く', () => {
     const { script } = chichiSample();
     const doc = docFromScript({ ...script, characters: script.characters.map((c) => ({ ...c, color: undefined })) });
-    expect(doc.cast.map((c) => c.mark)).toEqual(['○', '●', undefined]);
+    expect(doc.cast.slice(0, 3).map((c) => c.mark)).toEqual(['○', '●', undefined]);
     expect(doc.cast.every((c) => /^#/.test(c.color))).toBe(true);
     expect(doc.cast[2]).toMatchObject({ kind: 'prop', holder: 'oyaji' });
   });

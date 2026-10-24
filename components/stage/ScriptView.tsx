@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { member, puppets } from '../../lib/stage/cast';
 import { groupRows } from '../../lib/stage/edit';
-import { moveSentence } from '../../lib/stage/export';
+import { holdText, moveSentence } from '../../lib/stage/export';
 import { initialState, type StageState } from '../../lib/stage/state';
 import type { CastMember, CueOp, Item, PinNo } from '../../lib/stage/types';
 import { AutoText } from './AutoText';
@@ -290,6 +290,9 @@ function ChipPanel(p: { cast: CastMember[]; it: Item; prev: StageState; focusNam
       break;
     case 'move':
       inner = <span className="sentence">{moveSentence(p.cast, p.prev, it)}</span>;
+      break;
+    case 'hold':
+      inner = <span className="sentence">{holdText(p.cast, p.prev, it).slice(1, -1)}</span>;
       break;
   }
   return (

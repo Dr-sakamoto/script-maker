@@ -1,6 +1,6 @@
 import type { CastMember, Item, ItemOf, PinNo, Role, Side } from './types';
 
-export type Place = { on: true; x: number } | { on: false; side: Side };
+export type Place = { on: true; x: number; z?: number; r?: number } | { on: false; side: Side };
 
 export type StageState = {
   /** 全体照明（点いている／消えている） */
@@ -17,6 +17,8 @@ export type StageState = {
   acts: Record<string, { x: string; id: string }>;
   /** 最初の照明きっかけを過ぎたか（それより前の move は板付き） */
   started: boolean;
+  /** 小道具 → 持っている人形 */
+  held: Record<Role, Role>;
 };
 
 export const NARRATOR = '_';
@@ -30,8 +32,12 @@ export const pinArea = (p: PinNo) => (['下手', '中央', '上手'] as const)[p
 
 export function initialState(cast: CastMember[]): StageState {
   const pos: Record<Role, Place> = {};
-  // 人形は袖に、小道具は小道具箱に（どちらも「舞台にいない」）
-  for (const c of cast) pos[c.id] = { on: false, side: c.home ?? 'L' };
+  // 人形は袖に、小道具は小道具箱に、大道具は上手の袖に（どれも「舞台にいない」）
+  const held: Record<Role, Role> = {};
+  for (const c of cast) {
+    pos[c.id] = { on: false, side: c.home ?? (c.kind === 'set' ? 'R' : 'L') };
+    if (c.kind === 'prop' && c.holder) held[c.id] = c.holder;
+  }
   return {
     lit: false,
     pins: [false, false, false],
@@ -41,6 +47,7 @@ export function initialState(cast: CastMember[]): StageState {
     playing: {},
     acts: {},
     started: false,
+    held,
   };
 }
 
@@ -71,13 +78,21 @@ export function applyItem(s: StageState, it: Item): StageState {
       pinFade[it.p - 1] = fade;
       return { ...s, pins, pinFade, started: true };
     }
+    case 'hold':
+      return { ...s, held: { ...s.held, [it.w]: it.by }, pos: { ...s.pos, [it.w]: { on: false, side: 'L' } } };
     case 'move': {
-      const pos = { ...s.pos, [it.w]: it.in ? { on: true as const, x: it.x } : { on: false as const, side: it.side } };
+      const pos = { ...s.pos, [it.w]: it.in ? { on: true as const, x: it.x, z: it.z, r: it.r } : { on: false as const, side: it.side } };
+      // 置いた・片付けた小道具は、もう誰も持っていない
+      let held = s.held;
+      if (it.w in held) {
+        held = { ...held };
+        delete held[it.w];
+      }
       const acts = { ...s.acts };
       const was = s.pos[it.w];
       // 出・ハケのたびに、その人の（動き）はリセット
       if (!it.in || !was || !was.on) delete acts[it.w];
-      return { ...s, pos, acts };
+      return { ...s, pos, acts, held };
     }
     case 'cue': {
       const playing = { ...s.playing };
@@ -123,9 +138,11 @@ export function sameStage(a: StageState, b: StageState): boolean {
     const p = a.pos[r];
     const q = b.pos[r];
     if (!p || !q || p.on !== q.on) return false;
-    if (p.on && q.on && Math.abs(p.x - q.x) >= 2) return false;
+    if (p.on && q.on && (Math.abs(p.x - q.x) >= 2 || Math.abs((p.z ?? 0) - (q.z ?? 0)) >= 0.05 || Math.abs((p.r ?? 0) - (q.r ?? 0)) >= 1)) return false;
     if (!p.on && !q.on && p.side !== q.side) return false;
   }
+  const ha = JSON.stringify(Object.entries(a.held).sort());
+  if (ha !== JSON.stringify(Object.entries(b.held).sort())) return false;
   const ka = Object.keys(a.playing).sort().join(',');
   const kb = Object.keys(b.playing).sort().join(',');
   return ka === kb;

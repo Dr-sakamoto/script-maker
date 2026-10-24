@@ -8,22 +8,32 @@ import type { CastMember, CueOp, Doc, Item } from './types';
  * 舞台の役は台本の登場人物、音源番号は登録済みの音源トラックをそのまま使う。
  */
 
+/** どの台本にも最初からある大道具（お笑いでよく使う机と椅子）。上手の袖に置いてある */
+export const DEFAULT_SETS: CastMember[] = [
+  { id: 'set-desk', name: '机', short: '机', color: '#b07a45', kind: 'set', shape: 'desk', home: 'R' },
+  { id: 'set-chair', name: '椅子', short: '椅', color: '#b07a45', kind: 'set', shape: 'chair', home: 'R' },
+];
+const isDefaultSet = (id: string) => DEFAULT_SETS.some((d) => d.id === id);
+
 export function castFromCharacters(chars: Character[]): CastMember[] {
   let puppetNo = 0;
-  return chars.map((c, i) => {
-    const prop = c.kind === 'prop';
-    const k = prop ? -1 : puppetNo++;
+  const cast: CastMember[] = chars.map((c, i) => {
+    const kind = c.kind ?? 'puppet';
+    const k = kind === 'puppet' ? puppetNo++ : -1;
     return {
       id: c.id,
       name: c.name || `役${i + 1}`,
       short: shortName(c.name || `役${i + 1}`),
-      mark: prop ? undefined : MARKS[k],
+      mark: kind === 'puppet' ? MARKS[k] : undefined,
       color: c.color || PALETTE[i % PALETTE.length],
-      kind: prop ? 'prop' : 'puppet',
-      holder: prop ? c.holder : undefined,
-      home: k % 2 === 0 ? 'L' : 'R',
+      kind,
+      holder: kind === 'prop' ? c.holder : undefined,
+      shape: kind === 'set' ? (c.shape ?? 'free') : undefined,
+      home: kind === 'set' ? 'R' : k % 2 === 0 ? 'L' : 'R',
     };
   });
+  for (const d of DEFAULT_SETS) if (!cast.some((c) => c.id === d.id)) cast.push({ ...d });
+  return cast;
 }
 
 export const soundMap = (sounds: Sound[]) => Object.fromEntries(sounds.map((s) => [s.index, s.name]));
@@ -77,9 +87,17 @@ export function scriptWithDoc(script: ScriptItem, doc: Doc): ScriptItem {
     return m ? { ...c, name: m.name, color: m.color } : c;
   });
   // 舞台で足した役（小道具箱の＋など）
+  // 机・椅子（最初からある大道具）は書き戻さない
   for (const m of doc.cast)
-    if (!characters.some((c) => c.id === m.id))
-      characters.push({ id: m.id, name: m.name, performerId: '', color: m.color, ...(m.kind === 'prop' ? { kind: 'prop' as const, holder: m.holder } : {}) });
+    if (!characters.some((c) => c.id === m.id) && !isDefaultSet(m.id))
+      characters.push({
+        id: m.id,
+        name: m.name,
+        performerId: '',
+        color: m.color,
+        ...(m.kind === 'prop' ? { kind: 'prop' as const, holder: m.holder } : {}),
+        ...(m.kind === 'set' ? { kind: 'set' as const, shape: m.shape } : {}),
+      });
   const sounds = [...(script.sounds ?? [])];
   for (const it of doc.items) {
     if (it.t !== 'cue' || !it.x) continue;

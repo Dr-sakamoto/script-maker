@@ -38,11 +38,13 @@ export function cueText(it: Extract<Item, { t: 'cue' }>, name?: string): string 
 /** move を文章に。prev は直前の状態 */
 export function moveText(cast: CastMember[], prev: StageState, it: Extract<Item, { t: 'move' }>): string {
   const who = nameOf(cast, it.w);
-  // 小道具は置く／片付ける
-  if (member(cast, it.w)?.kind === 'prop') {
-    if (!it.in) return `（${who}を片付ける）`;
+  // 小道具・大道具は置く／動かす／片付ける。持っていた人がいればその人が
+  const k0 = member(cast, it.w)?.kind;
+  if (k0 === 'prop' || k0 === 'set') {
+    const by = prev.held[it.w] ? `${nameOf(cast, prev.held[it.w])}、` : '';
+    if (!it.in) return `（${by}${who}を片付ける）`;
     const p = prev.pos[it.w];
-    return p?.on ? `（${who}を${areaOf(it.x)}へ動かす）` : `（${who}を${areaOf(it.x)}に置く）`;
+    return p?.on ? `（${by}${who}を${areaOf(it.x)}へ動かす）` : `（${by}${who}を${areaOf(it.x)}に置く）`;
   }
   const k = classifyMove(prev, it);
   if (!it.in) return `【${who} ハケ（${sideName(it.side)}へ）】`;
@@ -50,10 +52,19 @@ export function moveText(cast: CastMember[], prev: StageState, it: Extract<Item,
   return `（${who}、${areaOf(it.x)}へ移動）`;
 }
 
+/** 小道具を持つ／受け取る */
+export function holdText(cast: CastMember[], prev: StageState, it: Extract<Item, { t: 'hold' }>): string {
+  const from = prev.held[it.w];
+  const by = nameOf(cast, it.by);
+  const what = nameOf(cast, it.w);
+  return from && from !== it.by ? `（${by}、${nameOf(cast, from)}から${what}を受け取る）` : `（${by}、${what}を持つ）`;
+}
+
 /** チップのタップで出す説明文（例：親父が下手から出て中央へ） */
 export function moveSentence(cast: CastMember[], prev: StageState, it: Extract<Item, { t: 'move' }>): string {
   const who = nameOf(cast, it.w);
-  if (member(cast, it.w)?.kind === 'prop') return moveText(cast, prev, it).slice(1, -1);
+  const k0 = member(cast, it.w)?.kind;
+  if (k0 === 'prop' || k0 === 'set') return moveText(cast, prev, it).slice(1, -1);
   const k = classifyMove(prev, it);
   if (!it.in) return `${who}が${sideName(it.side)}へハケる`;
   if (k === 'board') return `${who}は${areaOf(it.x)}に板付き`;
@@ -88,6 +99,8 @@ function itemLine(c: Ctx, i: number, marks: boolean): string | null {
       return `【間 ${secs(it.s)}】`;
     case 'move':
       return classifyMove(c.before(i), it) === 'board' ? null : moveText(c.cast, c.before(i), it);
+    case 'hold':
+      return holdText(c.cast, c.before(i), it);
   }
 }
 
@@ -108,7 +121,7 @@ function boardSet(c: Ctx): string | null {
   c.items.forEach((it, i) => {
     if (it.t === 'move' && it.in && classifyMove(c.before(i), it) === 'board') {
       const who = nameOf(c.cast, it.w);
-      if (member(c.cast, it.w)?.kind === 'prop') return void parts.push(`${who}（${areaOf(it.x)}）`);
+      if (member(c.cast, it.w)?.kind !== 'puppet') return void parts.push(`${who}（${areaOf(it.x)}）`);
       const idx = parts.findIndex((p) => p.startsWith(`${who}（`));
       const s = `${who}（${areaOf(it.x)}）`;
       if (idx >= 0) parts[idx] = s;
@@ -138,6 +151,7 @@ export function trigger(c: Ctx, i: number, marks: boolean): string {
     const it = c.items[j];
     if (it.t === 'line') return `${lineText(c.cast, it, marks)} の後`;
     if (it.t === 'act') return `${actText(c.cast, it)} の後`;
+    if (it.t === 'hold') return `${holdText(c.cast, c.before(j), it)} の後`;
     if (it.t === 'move') {
       const k = classifyMove(c.before(j), it);
       if (k === 'board') continue;
@@ -166,6 +180,7 @@ export function exportCues(doc: Doc, kind: Exclude<ExportKind, 'script'>, o: Exp
     else if (kind === 'light' && it.t === 'light') s = lightText(it);
     else if (kind === 'stage' && it.t === 'move' && classifyMove(c.before(i), it) !== 'board')
       s = moveText(c.cast, c.before(i), it);
+    else if (kind === 'stage' && it.t === 'hold') s = holdText(c.cast, c.before(i), it);
     if (s == null) return;
     no++;
     const t = o.time ? `　[${fmtTime(tl.starts[i])}]` : '';

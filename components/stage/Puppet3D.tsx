@@ -14,13 +14,13 @@ type Props = {
   face: number; // -1 下手向き 〜 1 上手向き
   ghost: boolean; // 袖にいる
   speaking: boolean;
-  holding?: CastMember;
+  holding?: CastMember[]; // 持っている小道具（右手→左手の順）
   marker?: string | null; // 話者の印の色
   propMarker?: string | null;
   reduced: boolean;
   dragging: boolean;
   onDown?: (e: ThreeEvent<PointerEvent>) => void;
-  onPropDown?: (e: ThreeEvent<PointerEvent>) => void;
+  onPropDown?: (id: string) => (e: ThreeEvent<PointerEvent>) => void;
 };
 
 export const BODY_H = 1.2;
@@ -51,16 +51,16 @@ export function NameTag({ name, y, z = 0, px = 30, opacity = 1 }: { name: string
 
 export function Puppet3D(p: Props) {
   const m = useMats(p.member.color);
-  const pm = useMats(p.holding?.color ?? '#ffffff');
+
   const g = useRef<Group>(null);
   const inner = useRef<Group>(null);
 
   useEffect(() => {
-    for (const k of [...Object.values(m), ...Object.values(pm)] as Material[]) {
+    for (const k of Object.values(m) as Material[]) {
       k.opacity = p.ghost ? 0.4 : 1;
       k.depthWrite = !p.ghost;
     }
-  }, [m, pm, p.ghost]);
+  }, [m, p.ghost]);
 
   useFrame((st, dt) => {
     const o = g.current;
@@ -103,24 +103,9 @@ export function Puppet3D(p: Props) {
           </mesh>
         ))}
         <NameTag name={p.member.name} y={0.62} z={0.5} opacity={p.ghost ? 0.5 : 1} />
-        {p.holding && (
-          <group position={[0.34, 0.9, 0.36]}>
-            <mesh material={pm.head} castShadow>
-              <sphereGeometry args={[0.13, 20, 16]} />
-            </mesh>
-            {p.propMarker && (
-              <mesh>
-                <torusGeometry args={[0.19, 0.012, 6, 30]} />
-                <meshBasicMaterial color={p.propMarker} />
-              </mesh>
-            )}
-            <NameTag name={p.holding.name} y={-0.24} px={22} opacity={p.ghost ? 0.5 : 1} />
-            <mesh onPointerDown={p.onPropDown}>
-              <sphereGeometry args={[0.24, 8, 6]} />
-              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-            </mesh>
-          </group>
-        )}
+        {(p.holding ?? []).slice(0, 2).map((h, i) => (
+          <HeldProp key={h.id} member={h} side={i === 0 ? 1 : -1} ghost={p.ghost} marker={p.propMarker && h.color === p.propMarker ? p.propMarker : null} onDown={p.onPropDown?.(h.id)} />
+        ))}
       </group>
     </group>
   );
@@ -151,6 +136,35 @@ export function Prop3D(p: { member: CastMember; x: number; ghost: boolean; reduc
       <NameTag name={p.member.name} y={0.24} z={0.25} px={26} opacity={p.ghost ? 0.5 : 1} />
       <mesh position={[0, 0.3, 0]} onPointerDown={p.onDown}>
         <boxGeometry args={[0.8, 0.8, 0.7]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
+/** 手に持った小道具：小さな球＋名前 */
+function HeldProp(p: { member: CastMember; side: 1 | -1; ghost: boolean; marker: string | null; onDown?: (e: ThreeEvent<PointerEvent>) => void }) {
+  const pm = useMats(p.member.color);
+  useEffect(() => {
+    for (const k of Object.values(pm) as Material[]) {
+      k.opacity = p.ghost ? 0.4 : 1;
+      k.depthWrite = !p.ghost;
+    }
+  }, [pm, p.ghost]);
+  return (
+    <group position={[0.34 * p.side, 0.9, 0.36]}>
+      <mesh material={pm.head} castShadow>
+        <sphereGeometry args={[0.13, 20, 16]} />
+      </mesh>
+      {p.marker && (
+        <mesh>
+          <torusGeometry args={[0.19, 0.012, 6, 30]} />
+          <meshBasicMaterial color={p.marker} />
+        </mesh>
+      )}
+      <NameTag name={p.member.name} y={-0.24} px={22} opacity={p.ghost ? 0.5 : 1} />
+      <mesh onPointerDown={p.onDown}>
+        <sphereGeometry args={[0.24, 8, 6]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </group>
