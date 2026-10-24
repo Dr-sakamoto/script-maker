@@ -37,6 +37,40 @@ function createBlock(type: 'dialogue' | 'stage' | 'sound' | 'light', speaker?: s
   return block;
 }
 
+const STAGE_COLORS = ['#d9822b', '#c2507d', '#3f88c5', '#4a9b5e', '#8a63d2', '#c9a227', '#d0453a', '#5d6b7a'];
+
+/** 舞台（/stage）での見た目：人形の色と、人形か小道具か。見た目は全員共通で色だけ変わる */
+function StageLook({ char, chars, index, onChange }: { char: Character; chars: Character[]; index: number; onChange: (patch: Partial<Character>) => void }) {
+  const others = chars.filter((o) => o.id !== char.id && o.kind !== 'prop');
+  return (
+    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+      <span>舞台</span>
+      <input
+        type="color"
+        value={char.color || STAGE_COLORS[index % STAGE_COLORS.length]}
+        onChange={(e) => onChange({ color: e.target.value })}
+        className="h-5 w-7 cursor-pointer rounded border border-slate-800 bg-transparent p-0"
+        title="人形の色"
+      />
+      <select
+        value={char.kind === 'prop' ? `prop:${char.holder ?? ''}` : 'puppet'}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === 'puppet' ? { kind: undefined, holder: undefined } : { kind: 'prop', holder: v.slice(5) || undefined });
+        }}
+        className="rounded border border-slate-800 bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-400 focus:border-violet-500 focus:outline-none"
+      >
+        <option value="puppet">人形</option>
+        {others.map((o) => (
+          <option key={o.id} value={`prop:${o.id}`}>
+            {o.name || 'キャラ'}が持つ小道具
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [view, setView] = useState<ViewMode>('home');
   const [units, setUnits] = useState<Unit[]>([]);
@@ -199,8 +233,18 @@ export default function HomePage() {
           createdAt: s.created_at,
           updatedAt: s.updated_at,
         }));
-        setScripts(dbScripts);
-        saveLocalScripts(dbScripts);
+        // 舞台（/stage）の項目と人形の色はローカルにだけあるので、手元の分を残す
+        const merged = dbScripts.map((s: ScriptItem) => {
+          const local = localScripts.find((l) => l.id === s.id);
+          if (!local) return s;
+          return {
+            ...s,
+            stage: local.stage,
+            characters: s.characters.map((c) => ({ ...local.characters.find((lc) => lc.id === c.id), ...c })),
+          };
+        });
+        setScripts(merged);
+        saveLocalScripts(merged);
       }
       setStatus('クラウド同期完了');
     } catch (error) {
@@ -347,6 +391,7 @@ export default function HomePage() {
         title: scriptTitle,
         netaType: scriptNetaType,
         characters: scriptCharacters.map((c) => ({
+          ...c,
           id: c.id || generateId(),
           name: c.name || 'キャラ',
           performerId: c.performerId,
@@ -792,6 +837,15 @@ export default function HomePage() {
                   保存
                 </button>
                 <button
+                  onClick={async () => {
+                    await saveScript();
+                    window.location.href = `/stage?id=${selectedScriptId}`;
+                  }}
+                  className="bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 text-sm font-medium px-4 py-2 rounded-xl transition duration-150 border border-amber-900/50"
+                >
+                  舞台
+                </button>
+                <button
                   onClick={triggerPrint}
                   className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-xl shadow-md shadow-violet-500/20 transition duration-150"
                 >
@@ -948,6 +1002,13 @@ export default function HomePage() {
                             >
                               編集する
                             </button>
+                            <a
+                              href={`/stage?id=${s.id}`}
+                              className="text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 font-medium px-3 py-1.5 rounded-lg border border-amber-900/50 transition"
+                              title="人形劇で演出をつける"
+                            >
+                              舞台
+                            </a>
                             <button
                               onClick={() => deleteScript(s.id)}
                               className="text-xs hover:bg-red-950 hover:text-red-400 text-slate-500 font-medium p-1.5 rounded-lg transition"
@@ -1224,6 +1285,12 @@ export default function HomePage() {
                           className="w-full rounded-xl border border-slate-800/80 bg-slate-900/50 px-3 py-1.5 text-slate-200 focus:border-violet-500 focus:outline-none transition text-xs"
                           placeholder="衣装 (例: 青のTシャツ、黒のズボン)"
                         />
+                        <StageLook
+                          char={char}
+                          chars={scriptCharacters}
+                          index={idx}
+                          onChange={(patch) => setScriptCharacters((cur) => cur.map((x, i) => (i === idx ? { ...x, ...patch } : x)))}
+                        />
                       </div>
                     ))}
                   </div>
@@ -1404,6 +1471,12 @@ export default function HomePage() {
                             placeholder="衣装を入力"
                           />
                         </div>
+                        <StageLook
+                          char={c}
+                          chars={scriptCharacters}
+                          index={idx}
+                          onChange={(patch) => setScriptCharacters((cur) => cur.map((x, i) => (i === idx ? { ...x, ...patch } : x)))}
+                        />
                       </div>
                     ))}
                     {scriptCharacters.length === 0 && (

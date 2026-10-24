@@ -20,6 +20,12 @@ export type Character = {
   name: string;
   performerId: string;
   costume?: string;
+  /** 舞台（/stage）の人形の色。未指定なら登場順に自動 */
+  color?: string;
+  /** 'prop' は他の役が持つ小道具（声は音源）。未指定は人形 */
+  kind?: 'puppet' | 'prop';
+  /** 小道具を持っている役の id */
+  holder?: string;
 };
 
 export type Sound = {
@@ -43,6 +49,8 @@ export type ScriptBlock = {
   cue?: Cue;
 };
 
+import type { Item as StageItem } from './stage/types';
+
 export type ScriptItem = {
   id: string;
   unitId: string;
@@ -54,6 +62,8 @@ export type ScriptItem = {
   tools?: string;
   bringIns?: string;
   costumes?: string;
+  /** 舞台（/stage）で触って作った台本。未作成なら blocks から起こす */
+  stage?: StageItem[];
   createdAt?: string;
   updatedAt?: string;
 };

@@ -34,7 +34,6 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "puppet"
+    "node_modules"
   ]
 }
