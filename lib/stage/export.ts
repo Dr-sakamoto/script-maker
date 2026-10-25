@@ -104,6 +104,16 @@ function itemLine(c: Ctx, i: number, marks: boolean): string | null {
   }
 }
 
+/** 項目1つぶんの文字台本の行（板付きは null）。印刷やクラウド用に外から使う */
+export function lineOfItem(doc: Doc, i: number, marks: boolean): string | null {
+  return itemLine(context(doc), i, marks);
+}
+
+/** きっかけ（直前のセリフ・動き・出ハケ）の文言 */
+export function triggerOf(doc: Doc, i: number, marks: boolean): string {
+  return trigger(context(doc), i, marks);
+}
+
 function header(doc: Doc, marks: boolean): string[] {
   const out = [`ユニット名：${doc.unit}`, `${doc.genre}「${doc.title}」`, ''];
   if (marks) {

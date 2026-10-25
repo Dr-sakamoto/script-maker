@@ -10,7 +10,7 @@ const KINDS: { v: ExportKind; label: string }[] = [
 ];
 
 /** 書き出し。ユニット名・種類・題・役はネタ管理の登録をそのまま使う */
-export function HandOff(p: { doc: Doc; onImport: (file: File) => void }) {
+export function HandOff(p: { doc: Doc; onImport: (file: File) => void; onPrint: () => void; children?: React.ReactNode }) {
   const [kind, setKind] = useState<ExportKind>('script');
   const [marks, setMarks] = useState(true);
   const [time, setTime] = useState(false);
@@ -40,6 +40,7 @@ export function HandOff(p: { doc: Doc; onImport: (file: File) => void }) {
 
   return (
     <div className="handoff">
+      {p.children}
       <div className="controls">
         <span className="seg">
           {KINDS.map((k) => (
@@ -62,6 +63,7 @@ export function HandOff(p: { doc: Doc; onImport: (file: File) => void }) {
       </div>
       <textarea ref={ta} readOnly value={text} className="export" />
       <div className="files">
+        <button onClick={p.onPrint}>🖨 印刷・PDF</button>
         <button onClick={download}>⇩ JSON</button>
         <button onClick={() => file.current?.click()}>⇧ 読み込む</button>
         <input

@@ -1,6 +1,7 @@
 import type { Character, ScriptBlock, ScriptItem, Sound, Unit } from '../types';
 import { MARKS, PALETTE, shortName } from './cast';
 import { uid } from './edit';
+import { lineOfItem, triggerOf } from './export';
 import type { CastMember, CueOp, Doc, Item } from './types';
 
 /**
@@ -68,6 +69,8 @@ export function itemsFromBlocks(blocks: ScriptBlock[], chars: Character[]): Item
 }
 
 export function docFromScript(script: ScriptItem, unit?: Unit): Doc {
+  const assign: NonNullable<Doc['assign']> = {};
+  for (const c of script.characters) assign[c.id] = { performerId: c.performerId ?? '', costume: c.costume ?? '' };
   return {
     id: script.id,
     unit: unit?.name ?? '',
@@ -76,35 +79,106 @@ export function docFromScript(script: ScriptItem, unit?: Unit): Doc {
     cast: castFromCharacters(script.characters),
     items: script.stage ?? itemsFromBlocks(script.blocks ?? [], script.characters),
     sounds: soundMap(script.sounds ?? []),
+    performers: unit?.performers ?? [],
+    university: unit?.university,
+    tools: script.tools ?? '',
+    bringIns: script.bringIns ?? '',
+    costumes: script.costumes ?? '',
+    assign,
     updatedAt: Date.parse(script.updatedAt ?? '') || 0,
   };
 }
 
-/** 舞台で変えたもの（項目・役の名前と色・音源名・題）を台本に書き戻す */
-export function scriptWithDoc(script: ScriptItem, doc: Doc): ScriptItem {
-  const characters: Character[] = script.characters.map((c) => {
-    const m = doc.cast.find((x) => x.id === c.id);
-    return m ? { ...c, name: m.name, color: m.color } : c;
+/** 登録された音源（番号→名前）。舞台で付けた名前（cue の x）も重ねる */
+export function soundRegistry(doc: Doc): Record<number, string> {
+  const reg: Record<number, string> = { ...(doc.sounds ?? {}) };
+  for (const it of doc.items) if (it.t === 'cue' && it.x) reg[it.n] = it.x;
+  return reg;
+}
+
+const strip = (s: string) => s.replace(/^[【（]/, '').replace(/[】）]$/, '');
+
+/**
+ * 舞台の項目を、これまでのブロック（セリフ・ト書き・音響・照明）の形にも起こしておく。
+ * クラウドの blocks 列や、これまでの形を読む側のため。きっかけは直前のセリフ・動き・出ハケから自動で入る。
+ */
+export function itemsToBlocks(doc: Doc): ScriptBlock[] {
+  const name = (id?: string) => doc.cast.find((c) => c.id === id)?.name;
+  const out: ScriptBlock[] = [];
+  doc.items.forEach((it, i) => {
+    const base = { id: it.id };
+    const cueOf = (fade?: number): ScriptBlock['cue'] => ({
+      fadeDuration: fade ?? 4,
+      triggerType: i === 0 ? 'undefined' : 'action',
+      triggerText: triggerOf(doc, i, false).replace(/ の後$/, ''),
+    });
+    switch (it.t) {
+      case 'line':
+        out.push({ ...base, type: 'dialogue', speaker: name(it.w), text: it.x });
+        break;
+      case 'act':
+        out.push({ ...base, type: 'stage', speaker: name(it.w), text: it.x });
+        break;
+      case 'light':
+        out.push({
+          ...base,
+          type: 'light',
+          text: it.p ? `ピン${it.p}${it.on ? 'IN' : 'OUT'}` : it.fade ? (it.on ? '徐々明転' : '徐々暗転') : it.on ? '明転' : '暗転',
+          cue: cueOf(it.fade),
+        });
+        break;
+      case 'cue':
+        out.push({ ...base, type: 'sound', text: `${doc.unit}${it.n} ${it.op}`, cue: cueOf(it.sec) });
+        break;
+      case 'se':
+        out.push({ ...base, type: 'sound', text: `SE ${it.x}`, cue: cueOf() });
+        break;
+      default: {
+        // 間・出ハケ・移動・持つ → ト書きとして文章に
+        const line = lineOfItem(doc, i, false);
+        if (line) out.push({ ...base, type: 'stage', text: strip(line) });
+      }
+    }
   });
-  // 舞台で足した役（小道具箱の＋など）
-  // 机・椅子（最初からある大道具）は書き戻さない
-  for (const m of doc.cast)
-    if (!characters.some((c) => c.id === m.id) && !isDefaultSet(m.id))
-      characters.push({
-        id: m.id,
-        name: m.name,
-        performerId: '',
-        color: m.color,
-        ...(m.kind === 'prop' ? { kind: 'prop' as const, holder: m.holder } : {}),
-        ...(m.kind === 'set' ? { kind: 'set' as const, shape: m.shape } : {}),
-      });
-  const sounds = [...(script.sounds ?? [])];
-  for (const it of doc.items) {
-    if (it.t !== 'cue' || !it.x) continue;
-    const s = sounds.find((x) => x.index === it.n);
-    if (s) s.name !== it.x && sounds.splice(sounds.indexOf(s), 1, { ...s, name: it.x });
-    else sounds.push({ id: uid(), unitId: script.unitId, index: it.n, name: it.x });
+  return out;
+}
+
+/** 舞台や「わたす」で変えたものを、ネタ管理の台本に書き戻す */
+export function scriptWithDoc(script: ScriptItem, doc: Doc): ScriptItem {
+  // 役：名前・色・配役・衣装。舞台で足した役は加え、なくした役は外す。机・椅子（最初からある大道具）は書き戻さない
+  const characters: Character[] = [];
+  for (const m of doc.cast) {
+    if (isDefaultSet(m.id)) continue;
+    const old = script.characters.find((c) => c.id === m.id);
+    const a = doc.assign?.[m.id];
+    characters.push({
+      ...(old ?? { id: m.id, performerId: '' }),
+      id: m.id,
+      name: m.name,
+      color: m.color,
+      performerId: a?.performerId ?? old?.performerId ?? '',
+      costume: a?.costume ?? old?.costume ?? '',
+      ...(m.kind === 'prop' ? { kind: 'prop' as const, holder: m.holder } : {}),
+      ...(m.kind === 'set' ? { kind: 'set' as const, shape: m.shape } : {}),
+    });
   }
-  sounds.sort((a, b) => a.index - b.index);
-  return { ...script, title: doc.title, characters, sounds, stage: doc.items, updatedAt: new Date(doc.updatedAt || Date.now()).toISOString() };
+  // 音源：登録リスト＋舞台で付けた名前。番号の順に
+  const reg = soundRegistry(doc);
+  const sounds: Sound[] = Object.keys(reg)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map((n) => ({ id: (script.sounds ?? []).find((s) => s.index === n)?.id ?? uid(), unitId: script.unitId, index: n, name: reg[n] }));
+  return {
+    ...script,
+    title: doc.title,
+    netaType: doc.genre as ScriptItem['netaType'],
+    characters,
+    sounds,
+    tools: doc.tools ?? script.tools,
+    bringIns: doc.bringIns ?? script.bringIns,
+    costumes: doc.costumes ?? script.costumes,
+    stage: doc.items,
+    blocks: itemsToBlocks(doc),
+    updatedAt: new Date(doc.updatedAt || Date.now()).toISOString(),
+  };
 }

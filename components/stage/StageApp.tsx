@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { pushScript } from '../../lib/cloud';
 import { loadLocalScripts, saveLocalScripts } from '../../lib/storage';
 import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
-import { member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
+import { MARKS, member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
 import { insertAfter, moveBefore, removeItem, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
 import { histReducer, initHist } from '../../lib/stage/history';
 import { parseItems } from '../../lib/stage/io';
@@ -15,6 +16,8 @@ import { LAYERS, type Layer } from './chips';
 import { clock } from './clock';
 import { CastBox, LightConsole, PropBox, SoundDevice, Transport } from './Desk';
 import { HandOff } from './HandOff';
+import { Info } from './Info';
+import { PrintSheet } from './PrintSheet';
 import { InputBar } from './InputBar';
 import { ScriptView } from './ScriptView';
 import { Stage } from './Stage';
@@ -101,7 +104,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   const ref = useRef({ doc, cursor });
   ref.current = { doc, cursor };
 
-  // --- ネタ管理へ書き戻す（最新の一覧に混ぜるので、ほかの台本は消さない）
+  // --- ネタ管理へ書き戻す（最新の一覧に混ぜるので、ほかの台本は消さない）。繋がっていればクラウドにも送る
   const first = useRef(true);
   useEffect(() => {
     if (first.current) {
@@ -112,7 +115,14 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       const all = loadLocalScripts();
       saveLocalScripts(all.map((s) => (s.id === script.id ? scriptWithDoc(s, doc) : s)));
     }, 300);
-    return () => clearTimeout(t);
+    const c = setTimeout(() => {
+      const mine = loadLocalScripts().find((s) => s.id === script.id);
+      if (mine) void pushScript(mine);
+    }, 2500);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(c);
+    };
   }, [doc, script.id]);
 
   // --- テーマ
@@ -283,6 +293,23 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     }
     onMove(id, { on: true, x: Math.min(100 - WING - 1, Math.max(WING + 1, x)) });
   };
+  /** 「わたす」の表紙・配役・音源の直し */
+  const onInfo = (patch: Partial<Doc>, group: string) => dispatch({ type: 'commit', doc: { ...ref.current.doc, ...patch }, group: `info:${group}` });
+  /** 人形箱の＋：新しい人形（色と○●は自動） */
+  const onAddPuppet = (name: string) => {
+    const d = ref.current.doc;
+    const k = d.cast.filter((c) => c.kind === 'puppet').length;
+    const m: CastMember = {
+      id: uid(),
+      name,
+      short: shortName(name),
+      mark: MARKS[k],
+      color: PALETTE[d.cast.length % PALETTE.length],
+      kind: 'puppet',
+      home: k % 2 === 0 ? 'L' : 'R',
+    };
+    dispatch({ type: 'commit', doc: { ...d, cast: [...d.cast, m] } });
+  };
   /** 小道具箱の＋：新しい小道具（色は自動） */
   const onAddProp = (name: string, kind: 'prop' | 'set') => {
     const d = ref.current.doc;
@@ -413,7 +440,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   // 全画面プレビュー：3D空間だけ。触ると再生／停止、Esc か隅の × で戻る
   if (full)
     return (
-      <div className="stage-app mode-show">
+      <div className="stage-app mode-show screen-only">
         {stage}
         <button
           className="show-exit"
@@ -467,7 +494,8 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   );
 
   return (
-    <div className={`stage-app app mode-${mode}`}>
+    <>
+    <div className={`stage-app app mode-${mode} screen-only`}>
       <header>
         <a className="docbtn" href="/" aria-label="ネタ一覧へ">
           ←
@@ -513,7 +541,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
             />
             <LightConsole st={st} interactive={!playing} onLight={onLightAll} />
             <section className="left">{stage}</section>
-            <CastBox cast={cast} st={st} interactive={!playing} onDrop={onDropFromBox} />
+            <CastBox cast={cast} st={st} interactive={!playing} onDrop={onDropFromBox} onAdd={onAddPuppet} />
             <PropBox cast={cast} st={st} interactive={!playing} onDrop={onDropFromBox} onAdd={onAddProp} />
           </div>
         )}
@@ -525,7 +553,9 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
         )}
         {mode === 'hand' && (
           <section className="hand">
-            <HandOff doc={doc} onImport={onImport} />
+            <HandOff doc={doc} onImport={onImport} onPrint={() => window.print()}>
+              <Info doc={doc} onChange={onInfo} />
+            </HandOff>
           </section>
         )}
       </main>
@@ -554,6 +584,10 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
         )}
       </footer>
     </div>
+    <div className="print-only">
+      <PrintSheet doc={doc} />
+    </div>
+    </>
   );
 }
 

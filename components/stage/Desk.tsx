@@ -138,8 +138,9 @@ function useDragOut(onDrop: (id: Role, cx: number, cy: number) => void, onTap?: 
 }
 
 /** 人形箱：舞台に出ていない人形。引っぱり出す＝出、舞台から箱に入れる＝ハケ */
-export function CastBox(p: { cast: CastMember[]; st: StageState; interactive: boolean; onDrop: (id: Role, cx: number, cy: number) => void }) {
+export function CastBox(p: { cast: CastMember[]; st: StageState; interactive: boolean; onDrop: (id: Role, cx: number, cy: number) => void; onAdd: (name: string) => void }) {
   const { start, ghostEl } = useDragOut(p.onDrop);
+  const [adding, setAdding] = useState(false);
   const off = p.cast.filter((c) => c.kind === 'puppet' && !p.st.pos[c.id]?.on);
   return (
     <div className="dev box cast" data-drop="box">
@@ -150,7 +151,23 @@ export function CastBox(p: { cast: CastMember[]; st: StageState; interactive: bo
             <span>{c.name}</span>
           </button>
         ))}
-        {!off.length && <span className="emptybox">…</span>}
+        {adding ? (
+          <input
+            className="thing new"
+            autoFocus
+            placeholder="名前"
+            enterKeyHint="done"
+            onBlur={(e) => {
+              if (e.target.value.trim()) p.onAdd(e.target.value.trim());
+              setAdding(false);
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && (e.target as HTMLInputElement).blur()}
+          />
+        ) : (
+          <button className="thing add" disabled={!p.interactive} onClick={() => setAdding(true)} title="人形を足す">
+            ＋
+          </button>
+        )}
       </div>
       {ghostEl}
     </div>
