@@ -245,6 +245,12 @@ export function Transport(p: {
   onRedo: () => void;
   onMa: () => void;
   onFull: () => void;
+  /** 引き出したタイムライン（人・音・光・モノの行）。開いていれば細いバーの代わりに出す */
+  expanded: boolean;
+  onExpand: (v: boolean) => void;
+  height: number;
+  onHeight: (h: number) => void;
+  children?: React.ReactNode;
 }) {
   const t = useClock();
   const ref = useRef<HTMLDivElement>(null);
@@ -255,7 +261,42 @@ export function Transport(p: {
   };
   const minutes = Array.from({ length: Math.floor(T / 60) }, (_, i) => (i + 1) * 60);
   return (
-    <div className="dev transport">
+    <div className={`dev transport${p.expanded ? ' expanded' : ''}`}>
+      {/* つまんで上下に引くと、タイムラインが開く・高さが変わる */}
+      <div
+        className="grip"
+        title="タイムラインを引き出す"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          const y0 = e.clientY;
+          const h0 = p.expanded ? p.height : 0;
+          let moved = false;
+          const move = (ev: PointerEvent) => {
+            const h = h0 + (y0 - ev.clientY);
+            if (Math.abs(y0 - ev.clientY) > 4) moved = true;
+            if (!moved) return;
+            if (h < 90) p.onExpand(false);
+            else {
+              p.onExpand(true);
+              p.onHeight(Math.min(window.innerHeight * 0.75, Math.max(140, h)));
+            }
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            if (!moved) p.onExpand(!p.expanded);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+        }}
+      >
+        <i />
+      </div>
+      {p.expanded ? (
+        <div className="tl-box" style={{ height: p.height }}>
+          {p.children}
+        </div>
+      ) : (
       <div className="scrub">
         <div
           ref={ref}
@@ -278,6 +319,7 @@ export function Transport(p: {
           <span className="end">{fmtTime(T)}</span>
         </div>
       </div>
+      )}
       <div className="keys">
         <button onClick={p.onMa} title="間">
           ・・

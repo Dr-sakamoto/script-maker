@@ -1245,7 +1245,7 @@
   gap: 8px;
   overflow: auto;
 }
-.dev .head {
+.dev.cast .head {
   display: grid;
   justify-items: center;
   gap: 2px;
@@ -1254,14 +1254,14 @@
   padding: 0;
   font-size: 12px;
 }
-.dev .head i {
+.dev.cast .head i {
   width: 34px;
   height: 34px;
   border-radius: 50%;
   border: 3px solid #111;
   background: var(--c);
 }
-.dev .head span {
+.dev.cast .head span {
   max-width: 5em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1492,5 +1492,358 @@
   }
   .info-cast .cs {
     grid-column: 2 / 4;
+  }
+}
+
+/* ===== 引き出すタイムライン（人・音・光・モノの行） ===== */
+.dev.transport .grip {
+  height: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.dev.transport .grip i {
+  width: 56px;
+  height: 5px;
+  border-radius: 3px;
+  background: #111a;
+}
+.dev.transport.expanded .grip i {
+  background: #111;
+}
+.tl-box {
+  border: 3px solid #111;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1b1a20;
+}
+.tlv {
+  position: relative;
+  height: 100%;
+  color: #e9e6df;
+  font-size: 11px;
+}
+.tlv-scroll {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.tlv-inner {
+  position: relative;
+  min-height: 100%;
+}
+.tlv-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 20px;
+  background: #26252c;
+  border-bottom: 1px solid #3a3940;
+  cursor: pointer;
+  touch-action: none;
+}
+.tlv-ruler span {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  color: #a9a59d;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.tlv-ruler span::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  height: 4px;
+  border-left: 1px solid #6a6770;
+}
+.tlv-corner {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  width: 76px;
+  height: 100%;
+  background: #26252c;
+  border-right: 1px solid #3a3940;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.lane {
+  position: relative;
+  border-bottom: 1px solid #2c2b32;
+  touch-action: pan-y;
+}
+.lane:nth-child(odd) {
+  background: #1f1e24;
+}
+.lane.first {
+  border-top: 2px solid #3d3c44;
+}
+.lane-name {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 76px;
+  height: 100%;
+  background: #24232a;
+  border-right: 1px solid #3a3940;
+  box-shadow: inset 4px 0 0 var(--c);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.lane-name em {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #3a3940;
+  color: #cfcac2;
+}
+.g-sound .lane-name em {
+  background: #2cc3b5;
+  color: #04201d;
+}
+.g-light .lane-name em {
+  background: #f2c94c;
+  color: #241b00;
+}
+.lane-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+.clip {
+  position: absolute;
+  top: 4px;
+  height: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.clip > span {
+  display: block;
+  padding: 0 5px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.clip.k-line {
+  background: var(--c);
+  color: #fff;
+  text-shadow: 0 1px 1px #0008;
+  z-index: 2;
+}
+.clip.k-act {
+  background: repeating-linear-gradient(135deg, #0000 0 5px, #ffffff10 5px 9px);
+  border: 2px solid var(--c);
+  color: #e9e6df;
+  z-index: 2;
+}
+.clip.k-act > span {
+  line-height: 14px;
+}
+.clip.k-ma {
+  background: #4a4950;
+  color: #e9e6df;
+  border: 1px dashed #8a8790;
+  z-index: 2;
+}
+.clip.k-on {
+  top: 0;
+  height: 100%;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--c) 20%, transparent);
+  cursor: pointer;
+  z-index: 1;
+}
+.clip.k-held {
+  top: 13px;
+  height: 11px;
+  background: color-mix(in srgb, var(--c) 55%, transparent);
+  font-size: 9px;
+  cursor: pointer;
+  z-index: 1;
+}
+.clip.k-held > span {
+  line-height: 11px;
+}
+.clip.k-sound {
+  background: linear-gradient(#2cc3b5, #1f9a8f);
+  color: #04201d;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 2;
+}
+.clip.k-light {
+  background: linear-gradient(#f7dc7a, #e3b93a);
+  color: #241b00;
+  cursor: pointer;
+  z-index: 2;
+}
+.clip.cur {
+  outline: 2px solid #fff;
+  outline-offset: -1px;
+}
+.clip .edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.clip .edge.l {
+  left: 0;
+}
+.clip .edge.r {
+  right: 0;
+}
+.clip .edge::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: #fff8;
+  opacity: 0;
+}
+.clip:hover .edge::after,
+.clip.cur .edge::after {
+  opacity: 1;
+}
+.mark {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 0;
+  z-index: 3;
+  cursor: grab;
+  touch-action: none;
+}
+.mark b {
+  position: absolute;
+  left: -5px;
+  top: 7px;
+  width: 10px;
+  height: 10px;
+  transform: rotate(45deg);
+  background: #e9e6df;
+  border: 2px solid #1b1a20;
+}
+.mark::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid #e9e6df88;
+}
+.mark span {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+}
+.mark.mk-hold b {
+  background: #d9822b;
+}
+.mark.mk-se b,
+.mark.mk-cue b {
+  background: #2cc3b5;
+}
+.mark.mk-light b {
+  background: #f2c94c;
+}
+.mark.mk-exit b {
+  background: #6a6770;
+}
+.mark.cur b {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #fff;
+}
+.tlv-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #ff5a4f;
+  z-index: 6;
+  pointer-events: none;
+}
+.tlv-head::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -5px;
+  border: 6px solid transparent;
+  border-top-color: #ff5a4f;
+}
+.tlv-ghost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dashed #fff;
+  z-index: 7;
+  pointer-events: none;
+}
+.tlv-ghost span {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  background: #fff;
+  color: #111;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-weight: 800;
+}
+.tlv-zoom {
+  position: absolute;
+  right: 6px;
+  top: 1px;
+  z-index: 8;
+  display: flex;
+  gap: 2px;
+}
+.tlv-zoom button {
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #4a4950;
+  border-radius: 4px;
+  background: #2c2b32;
+  color: #e9e6df;
+  font-size: 12px;
+  line-height: 1;
+}
+.tlv-zoom button.on {
+  background: #e9e6df;
+  color: #111;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tlv-scroll {
+    scroll-behavior: auto;
   }
 }
