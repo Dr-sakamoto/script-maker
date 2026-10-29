@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import type { Unit, Performer, ScriptItem, NetaType, Sound, Character } from '../lib/types';
 import { loadLocalUnits, saveLocalUnits, loadLocalScripts, saveLocalScripts, exportBackup, importBackup } from '../lib/storage';
+import { castFromCharacters, charactersFromImport, soundsFromImport } from '../lib/stage/bridge';
+import { parseScriptText, type ImportResult } from '../lib/stage/importText';
+import { readScriptFile, SCRIPT_FILE_ACCEPT } from '../lib/stage/scriptFile';
+import type { Item as StageItem } from '../lib/stage/types';
 
 type ViewMode = 'home' | 'unitSetup' | 'performerSetup' | 'scriptSetup';
 
@@ -72,6 +76,10 @@ export default function HomePage() {
   const [scriptTools, setScriptTools] = useState('');
   const [scriptBringIns, setScriptBringIns] = useState('');
   const [scriptCostumes, setScriptCostumes] = useState('');
+  /** 既存の台本から読み込んだ舞台の項目（作成時にそのまま入れる） */
+  const [scriptStage, setScriptStage] = useState<StageItem[] | null>(null);
+  const [importText, setImportText] = useState('');
+  const [importNote, setImportNote] = useState('');
 
   const [status, setStatus] = useState('準備完了');
 
@@ -322,7 +330,41 @@ export default function HomePage() {
     setScriptTools('');
     setScriptBringIns('');
     setScriptCostumes('');
+    setScriptStage(null);
+    setImportText('');
+    setImportNote('');
     setView('scriptSetup');
+  }
+
+  /** 既存の台本（Word・テキスト・貼り付け）を読み込み、題・登場人物・音源・本文に落とし込む */
+  function applyScriptImport(r: ImportResult) {
+    if (!r.items.length) {
+      setImportNote('台本として読める行がありませんでした');
+      return;
+    }
+    const chars = charactersFromImport(scriptCharacters, r);
+    if (!scriptTitle.trim() && r.title) setScriptTitle(r.title);
+    if (r.genre && netaTypes.includes(r.genre as NetaType)) setScriptNetaType(r.genre as NetaType);
+    if (!scriptTools && r.tools) setScriptTools(r.tools);
+    if (!scriptBringIns && r.bringIns) setScriptBringIns(r.bringIns);
+    if (!scriptCostumes && r.costumes) setScriptCostumes(r.costumes);
+    setScriptCharacters(chars);
+    setScriptSounds(soundsFromImport(scriptSounds, r.items, selectedUnitId || ''));
+    setScriptStage(r.items);
+    const lines = r.items.filter((it) => it.t === 'line').length;
+    setImportNote(`読み込みました：${r.items.length} 項目（セリフ ${lines} 行）・登場人物 ${chars.map((c) => c.name).join('、') || 'なし'}`);
+  }
+
+  async function importScriptFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      const r = await readScriptFile(f, castFromCharacters(scriptCharacters));
+      applyScriptImport(r);
+    } catch (error) {
+      setImportNote(`読み込めませんでした：${(error as Error).message}`);
+    }
   }
 
   async function createScript() {
@@ -350,6 +392,7 @@ export default function HomePage() {
           name: s.name || '効果音',
         })),
         blocks: [],
+        ...(scriptStage ? { stage: scriptStage } : {}),
         tools: scriptTools,
         bringIns: scriptBringIns,
         costumes: scriptCostumes,
@@ -813,6 +856,35 @@ export default function HomePage() {
               {/* Left Settings */}
               <div className="space-y-5 bg-slate-950/40 border border-slate-800 p-6 rounded-3xl">
                 <h3 className="font-bold text-slate-200 mb-2 border-b border-slate-800 pb-2">基本設定</h3>
+
+                {/* 既存の台本から作る */}
+                <details className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-3" open={!!scriptStage}>
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-300">既存の台本を読み込む（Word・テキスト・貼り付け）</summary>
+                  <div className="mt-3 space-y-2">
+                    <label className="block cursor-pointer rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-center text-xs text-slate-200 transition hover:bg-slate-850">
+                      ファイルを選ぶ（.docx / .txt / .json）
+                      <input type="file" accept={SCRIPT_FILE_ACCEPT} className="hidden" onChange={importScriptFile} />
+                    </label>
+                    <textarea
+                      value={importText}
+                      onChange={(e) => setImportText(e.target.value)}
+                      rows={5}
+                      className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-100 focus:border-violet-500 focus:outline-none"
+                      placeholder={'または本文を貼り付け\n例）\n明転\n店員「いらっしゃいませ」\n客：すみません\n（客、レジに近づく）\nSE：ドアチャイム'}
+                    />
+                    <button
+                      disabled={!importText.trim()}
+                      onClick={() => applyScriptImport(parseScriptText(importText, castFromCharacters(scriptCharacters)))}
+                      className="w-full rounded-xl bg-violet-700/70 px-4 py-2 text-xs text-white transition hover:bg-violet-600 disabled:opacity-40"
+                    >
+                      貼り付けた台本を読み込む
+                    </button>
+                    {importNote && <p className="text-xs text-slate-400">{importNote}</p>}
+                    <p className="text-[10px] leading-relaxed text-slate-500">
+                      「名前「セリフ」」「名前：セリフ」「（ト書き）」「明転・暗転」「SE：〜」「M1 C.I」などを読み取り、登場人物と音源も起こします。
+                    </p>
+                  </div>
+                </details>
 
                 <label className="block space-y-1.5">
                   <span className="text-sm font-semibold text-slate-350">ネタ名 *</span>

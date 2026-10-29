@@ -1406,6 +1406,23 @@
   height: 46dvh;
   min-height: 220px;
 }
+.handoff .paste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.handoff .paste textarea {
+  height: 40dvh;
+  min-height: 200px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--input);
+  font-size: 14px;
+  line-height: 1.6;
+}
 .info {
   border: 1px solid var(--line);
   border-radius: 10px;
