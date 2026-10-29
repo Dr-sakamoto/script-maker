@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { exportDoc, type ExportKind } from '../../lib/stage/export';
+import { SCRIPT_FILE_ACCEPT } from '../../lib/stage/scriptFile';
 import type { Doc } from '../../lib/stage/types';
 
 const KINDS: { v: ExportKind; label: string }[] = [
@@ -10,7 +11,13 @@ const KINDS: { v: ExportKind; label: string }[] = [
 ];
 
 /** 書き出し。ユニット名・種類・題・役はネタ管理の登録をそのまま使う */
-export function HandOff(p: { doc: Doc; onImport: (file: File) => void; onPrint: () => void; children?: React.ReactNode }) {
+export function HandOff(p: {
+  doc: Doc;
+  onImport: (file: File) => void;
+  onPaste: (text: string) => void;
+  onPrint: () => void;
+  children?: React.ReactNode;
+}) {
   const [kind, setKind] = useState<ExportKind>('script');
   const [marks, setMarks] = useState(true);
   const [time, setTime] = useState(false);
@@ -18,6 +25,8 @@ export function HandOff(p: { doc: Doc; onImport: (file: File) => void; onPrint: 
   const text = useMemo(() => exportDoc(p.doc, kind, { marks, time }), [p.doc, kind, marks, time]);
   const ta = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
+  /** 既存の台本を貼り付けて読み込む欄 */
+  const [paste, setPaste] = useState<string | null>(null);
 
   const copy = async () => {
     try {
@@ -65,11 +74,14 @@ export function HandOff(p: { doc: Doc; onImport: (file: File) => void; onPrint: 
       <div className="files">
         <button onClick={p.onPrint}>🖨 印刷・PDF</button>
         <button onClick={download}>⇩ JSON</button>
-        <button onClick={() => file.current?.click()}>⇧ 読み込む</button>
+        <button onClick={() => file.current?.click()} title="Word（.docx）・テキスト・JSON">
+          ⇧ 台本を読み込む
+        </button>
+        <button onClick={() => setPaste(paste == null ? '' : null)}>📋 貼り付けて読み込む</button>
         <input
           ref={file}
           type="file"
-          accept=".json,application/json"
+          accept={SCRIPT_FILE_ACCEPT}
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -78,6 +90,28 @@ export function HandOff(p: { doc: Doc; onImport: (file: File) => void; onPrint: 
           }}
         />
       </div>
+      {paste != null && (
+        <div className="paste">
+          <textarea
+            autoFocus
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            placeholder={'既存の台本をここに貼り付ける\n\n例）\n【明転】\n親父「おう、帰ったか」\n母親：ただいま\n（親父、新聞を置く）\n【音源①】C.I『電話の音』'}
+          />
+          <div className="files">
+            <button
+              disabled={!paste.trim()}
+              onClick={() => {
+                p.onPaste(paste);
+                setPaste(null);
+              }}
+            >
+              読み込む
+            </button>
+            <button onClick={() => setPaste(null)}>やめる</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

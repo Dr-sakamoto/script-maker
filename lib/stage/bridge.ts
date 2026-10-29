@@ -2,6 +2,8 @@ import type { Character, ScriptBlock, ScriptItem, Sound, Unit } from '../types';
 import { MARKS, PALETTE, shortName } from './cast';
 import { uid } from './edit';
 import { lineOfItem, triggerOf } from './export';
+import type { ImportResult } from './importText';
+import { cueName } from './state';
 import type { CastMember, CueOp, Doc, Item } from './types';
 
 /**
@@ -181,4 +183,42 @@ export function scriptWithDoc(script: ScriptItem, doc: Doc): ScriptItem {
     blocks: itemsToBlocks(doc),
     updatedAt: new Date(doc.updatedAt || Date.now()).toISOString(),
   };
+}
+
+/** 新規台本の設定画面で既存の台本を読み込んだとき：登場人物に読み込んだ役を足す。使っていない仮の役（演者A・名前なし）は外す */
+export function charactersFromImport(prev: Character[], r: Pick<ImportResult, 'cast' | 'items'>): Character[] {
+  const used = new Set<string>();
+  for (const it of r.items) {
+    if ('w' in it && it.w) used.add(it.w);
+    if (it.t === 'hold') used.add(it.by);
+  }
+  const placeholder = (c: Character) => !c.name.trim() || c.name === '演者A';
+  const out: Character[] = [];
+  for (const m of r.cast) {
+    if (isDefaultSet(m.id)) continue;
+    const old = prev.find((c) => c.id === m.id);
+    if (old) {
+      if (used.has(m.id) || !placeholder(old)) out.push(old);
+      continue;
+    }
+    out.push({
+      id: m.id,
+      name: m.name,
+      performerId: '',
+      costume: '',
+      color: m.color,
+      ...(m.kind === 'prop' ? { kind: 'prop' as const, holder: m.holder } : {}),
+      ...(m.kind === 'set' ? { kind: 'set' as const, shape: m.shape } : {}),
+    });
+  }
+  return out;
+}
+
+/** 読み込んだ台本で名前の付いた音源を、登録済みの音源に足す（同じ番号は登録が優先） */
+export function soundsFromImport(prev: Sound[], items: Item[], unitId: string): Sound[] {
+  const out = [...prev];
+  for (const it of items)
+    if (it.t === 'cue' && !out.some((s) => s.index === it.n))
+      out.push({ id: uid(), unitId, index: it.n, name: cueName(items, it.n) || `音源${it.n}` });
+  return out.sort((a, b) => a.index - b.index);
 }

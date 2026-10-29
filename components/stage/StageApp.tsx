@@ -8,7 +8,8 @@ import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
 import { MARKS, member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
 import { insertAfter, moveBefore, removeItem, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
 import { histReducer, initHist } from '../../lib/stage/history';
-import { parseItems } from '../../lib/stage/io';
+import { parseScriptText, type ImportResult } from '../../lib/stage/importText';
+import { readScriptFile } from '../../lib/stage/scriptFile';
 import { allStates, cueName, initialState, isDark, nextCueNo, WING, type Place, type StageState } from '../../lib/stage/state';
 import { indexAt, timeline } from '../../lib/stage/timing';
 import type { CastMember, Doc, Item, NewItem, PinNo, Role } from '../../lib/stage/types';
@@ -399,14 +400,37 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     return () => window.removeEventListener('keydown', f);
   }, [mode, full, togglePlay]);
 
+  /** 読み込んだ台本で置き換える。役は足し、題や道具は空のときだけ埋める（↶ で戻せる） */
+  const applyImport = (r: ImportResult) => {
+    const d = ref.current.doc;
+    if (!r.items.length) return void alert('台本として読める行が無かった');
+    if (d.items.length && !confirm('今の台本を、読み込んだ台本で置き換えます（↶ で戻せます）')) return;
+    const lines = r.items.filter((it) => it.t === 'line').length;
+    const names = r.added.map((id) => r.cast.find((c) => c.id === id)?.name).filter(Boolean);
+    dispatch({
+      type: 'commit',
+      doc: {
+        ...d,
+        cast: r.cast,
+        items: r.items,
+        title: d.title || (r.title ?? ''),
+        tools: d.tools || r.tools,
+        bringIns: d.bringIns || r.bringIns,
+        costumes: d.costumes || r.costumes,
+      },
+      cursor: -1,
+    });
+    setMode('write');
+    alert(`読み込んだ：${r.items.length} 項目（セリフ ${lines} 行）${names.length ? `\n足した役：${names.join('、')}` : ''}`);
+  };
   const onImport = async (f: File) => {
     try {
-      const next = parseItems(await f.text());
-      dispatch({ type: 'commit', doc: { ...ref.current.doc, items: next }, cursor: next.length - 1 });
+      applyImport(await readScriptFile(f, ref.current.doc.cast));
     } catch (err) {
       alert(`読み込めなかった：${(err as Error).message}`);
     }
   };
+  const onPaste = (text: string) => applyImport(parseScriptText(text, ref.current.doc.cast));
   const onTitle = (title: string) => dispatch({ type: 'commit', doc: { ...ref.current.doc, title }, group: 'title' });
 
   const make = mode === 'make';
@@ -553,7 +577,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
         )}
         {mode === 'hand' && (
           <section className="hand">
-            <HandOff doc={doc} onImport={onImport} onPrint={() => window.print()}>
+            <HandOff doc={doc} onImport={onImport} onPaste={onPaste} onPrint={() => window.print()}>
               <Info doc={doc} onChange={onInfo} />
             </HandOff>
           </section>
