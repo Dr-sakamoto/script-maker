@@ -1245,7 +1245,7 @@
   gap: 8px;
   overflow: auto;
 }
-.dev .head {
+.dev.cast .head {
   display: grid;
   justify-items: center;
   gap: 2px;
@@ -1254,14 +1254,14 @@
   padding: 0;
   font-size: 12px;
 }
-.dev .head i {
+.dev.cast .head i {
   width: 34px;
   height: 34px;
   border-radius: 50%;
   border: 3px solid #111;
   background: var(--c);
 }
-.dev .head span {
+.dev.cast .head span {
   max-width: 5em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1492,5 +1492,879 @@
   }
   .info-cast .cs {
     grid-column: 2 / 4;
+  }
+}
+
+/* ===== 引き出すタイムライン（人・音・光・モノの行） ===== */
+.dev.transport .grip {
+  height: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.dev.transport .grip i {
+  width: 56px;
+  height: 5px;
+  border-radius: 3px;
+  background: #111a;
+}
+.dev.transport.expanded .grip i {
+  background: #111;
+}
+.tl-box {
+  border: 3px solid #111;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1b1a20;
+}
+.tlv {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: #e9e6df;
+  font-size: 12px;
+  --label: 112px;
+}
+/* 上の帯：選んでいるもの／ドラッグの行き先と、拡大縮小 */
+.tlv-bar {
+  flex: none;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-columns: max-content;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  background: #2c2b32;
+  border-bottom: 1px solid #3a3940;
+}
+.tlv-say {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.tlv-say em {
+  font-style: normal;
+  font-weight: 500;
+  color: #a9a59d;
+}
+.tlv-say.drag {
+  color: #fff;
+}
+.tlv-say.drag::before {
+  content: '⇆ ';
+  color: #ff5a4f;
+}
+.tlv-zoom {
+  flex: none;
+  display: flex;
+  gap: 3px;
+}
+.tlv-zoom button {
+  min-width: 26px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #4a4950;
+  border-radius: 5px;
+  background: #1f1e24;
+  color: #e9e6df;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.tlv-zoom button.on {
+  background: #e9e6df;
+  color: #111;
+}
+/* 見かた */
+.tlv-help {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 10px;
+  background: #24232a;
+  border-bottom: 1px solid #3a3940;
+}
+.tlv-help .ex {
+  position: relative;
+  left: auto;
+  top: auto;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+}
+.tlv-help .clip.ex > span {
+  line-height: 22px;
+}
+.tlv-help .ex.on,
+.tlv-help .ex.off {
+  padding: 0 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.tlv-help .ex.on {
+  background: color-mix(in srgb, #d9822b 26%, #1b1a20);
+}
+.tlv-help .ex.off {
+  background: repeating-linear-gradient(135deg, #2a2930 0 4px, #1b1a20 4px 8px);
+  color: #8a8790;
+}
+.tlv-help .mark.ex {
+  width: auto;
+}
+.tlv-help .mark.ex b {
+  position: static;
+}
+.tlv-help .mark.ex::before {
+  display: none;
+}
+.tlv-help p {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: #a9a59d;
+  font-size: 11px;
+}
+.tlv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.tlv-inner {
+  position: relative;
+  min-height: 100%;
+}
+.tlv-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: 22px;
+  background: #26252c;
+  border-bottom: 1px solid #3a3940;
+  cursor: pointer;
+  touch-action: none;
+}
+.tlv-ruler span {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  color: #a9a59d;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.tlv-ruler span::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 15px;
+  height: 4px;
+  border-left: 1px solid #6a6770;
+}
+.tlv-ruler span.zero {
+  transform: none;
+  padding-left: 3px;
+}
+.tlv-ruler span.zero::after {
+  left: 0;
+}
+.tlv-end {
+  position: absolute;
+  top: 22px;
+  bottom: 0;
+  right: 0;
+  z-index: 3;
+  background: #121116;
+  border-left: 1px solid #4a4950;
+  pointer-events: none;
+}
+.tlv-corner {
+  position: sticky;
+  left: 0;
+  z-index: 7;
+  width: var(--label);
+  height: 100%;
+  background: #ff5a4f;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+/* まとまり（人・音・光・モノ）の見出し。タップで畳む */
+.sect-head {
+  position: relative;
+  height: 22px;
+  background: #121116;
+  border-top: 1px solid #3d3c44;
+  touch-action: pan-y;
+}
+.sect-name {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  width: var(--label);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 0;
+  border-right: 1px solid #3a3940;
+  background: #121116;
+  color: #e9e6df;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+.sect-name b {
+  width: 10px;
+  color: #8a8790;
+  font-size: 10px;
+}
+.sect-name i {
+  font-style: normal;
+  font-size: 10px;
+}
+.s-sound .sect-name i {
+  color: #2cc3b5;
+}
+.s-light .sect-name i {
+  color: #f2c94c;
+}
+.sect-name small {
+  margin-left: auto;
+  color: #8a8790;
+  font-size: 10px;
+  font-weight: 600;
+}
+.mini {
+  position: absolute;
+  top: 9px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--c);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.mini.k-sound {
+  background: #2cc3b5;
+}
+.mini.k-light {
+  background: #f2c94c;
+}
+.mini.k-ma {
+  background: #6a6770;
+}
+.lane {
+  position: relative;
+  border-bottom: 1px solid #2c2b32;
+  touch-action: pan-y;
+}
+/* 人・モノの行：袖にいる間は斜線、舞台にいる間はその色が敷かれる */
+.lane.presence {
+  background: repeating-linear-gradient(135deg, #222128 0 4px, #1b1a20 4px 8px);
+}
+.lane-name {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  width: var(--label);
+  height: 100%;
+  background: #24232a;
+  border-right: 1px solid #3a3940;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.lane-name i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--c);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  text-shadow: 0 1px 1px #0006;
+}
+.g-sound .lane-name i {
+  background: #2cc3b5;
+  color: #04201d;
+  text-shadow: none;
+  font-size: 9px;
+}
+.g-light .lane-name i {
+  background: #f2c94c;
+  color: #241b00;
+  text-shadow: none;
+}
+.g-stage .lane-name i {
+  background: #4a4950;
+}
+.lane-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+.clip {
+  position: absolute;
+  top: 5px;
+  height: 22px;
+  border-radius: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.clip > span {
+  display: block;
+  padding: 0 6px;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.clip.k-line {
+  background: var(--c);
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 1px #0008;
+  border-radius: 11px;
+  box-shadow: 0 1px 0 #0006;
+  z-index: 2;
+}
+.clip.k-act {
+  background: color-mix(in srgb, var(--c) 18%, #1b1a20);
+  border: 2px dashed var(--c);
+  color: #e9e6df;
+  z-index: 2;
+}
+.clip.k-act > span {
+  line-height: 18px;
+}
+.clip.k-ma {
+  background: #3a3940;
+  color: #cfcac2;
+  border: 1px dashed #8a8790;
+  z-index: 2;
+}
+.clip.k-on {
+  top: 0;
+  height: 100%;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--c) 26%, #1b1a20);
+  border-left: 2px solid var(--c);
+  cursor: pointer;
+  z-index: 1;
+}
+.clip.k-held {
+  background: color-mix(in srgb, var(--c) 60%, #1b1a20);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  z-index: 2;
+}
+.clip.k-sound {
+  background: repeating-linear-gradient(90deg, #0000 0 3px, #0001 3px 4px), linear-gradient(#36d3c4, #1f9a8f);
+  color: #04201d;
+  font-weight: 800;
+  cursor: pointer;
+  z-index: 2;
+}
+.clip.k-light {
+  background: linear-gradient(#f7dc7a, #e3b93a);
+  color: #241b00;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 2;
+}
+.clip.cur {
+  outline: 2px solid #fff;
+  outline-offset: 0;
+}
+.clip.k-on.cur {
+  outline: 0;
+}
+.clip.lift,
+.mark.lift {
+  opacity: 0.85;
+  z-index: 8;
+  filter: drop-shadow(0 3px 4px #000a);
+}
+.clip .edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.clip .edge.l {
+  left: 0;
+}
+.clip .edge.r {
+  right: 0;
+}
+/* つまめる端：音・光・持つ帯は常に、出〜ハケは選んだ時に見せる */
+.clip .edge::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: 4px;
+  border-radius: 2px;
+  background: #fffc;
+  box-shadow: 0 0 0 1px #0004;
+  opacity: 0;
+}
+.clip.k-sound .edge::after,
+.clip.k-light .edge::after,
+.clip.k-held .edge::after,
+.clip:hover .edge::after,
+.clip.cur .edge::after {
+  opacity: 1;
+}
+.clip.k-on .edge::after {
+  top: 30%;
+  bottom: 30%;
+  background: var(--c);
+}
+/* 印（出・ハケ・移動・持つ・SE など）は旗のように立てる */
+.mark {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 0;
+  z-index: 3;
+  cursor: grab;
+  touch-action: none;
+}
+.mark::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid #e9e6df;
+}
+.mark b {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 4px;
+  border-radius: 0 10px 10px 0;
+  background: #e9e6df;
+  color: #111;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px #0008;
+}
+.mark b i {
+  font-style: normal;
+  font-size: 9px;
+}
+.mark.mk-enter b {
+  background: #6fd08c;
+}
+.mark.mk-enter::before {
+  border-color: #6fd08c;
+}
+.mark.mk-exit b {
+  background: #8a8790;
+  color: #fff;
+}
+.mark.mk-exit::before {
+  border-color: #8a8790;
+}
+.mark.mk-hold b {
+  background: #d9822b;
+  color: #fff;
+}
+.mark.mk-hold::before {
+  border-color: #d9822b;
+}
+.mark.mk-se b,
+.mark.mk-cue b {
+  background: #2cc3b5;
+}
+.mark.mk-se::before,
+.mark.mk-cue::before {
+  border-color: #2cc3b5;
+}
+.mark.mk-light b {
+  background: #f2c94c;
+}
+.mark.cur b {
+  box-shadow: 0 0 0 2px #fff, 0 1px 2px #0008;
+}
+.tlv-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #ff5a4f;
+  z-index: 9;
+  pointer-events: none;
+}
+.tlv-head::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -6px;
+  border: 7px solid transparent;
+  border-top-color: #ff5a4f;
+}
+.tlv-ghost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 3px solid #fff;
+  margin-left: -1px;
+  z-index: 10;
+  pointer-events: none;
+  box-shadow: 0 0 8px #fff8;
+}
+.tlv-ghost span {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  background: #fff;
+  color: #111;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.tlv-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 選んでいるものの道具 */
+.tlv-tools {
+  flex: none;
+  min-width: max-content;
+  display: flex;
+  gap: 3px;
+}
+.tlv-tools button {
+  flex: none;
+  min-width: 30px;
+  white-space: nowrap;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #5a5862;
+  border-radius: 5px;
+  background: #3a3940;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
+.tlv-tools button.trash {
+  background: #5a2a2a;
+  border-color: #8a3a3a;
+}
+
+/* ===== スマホ：CapCut のように、真ん中の線へ時間を送る ===== */
+.tlv.cap {
+  font-size: 13px;
+}
+.tlv.cap .tlv-bar {
+  height: 40px;
+}
+.tlv.cap .tlv-tools button {
+  min-width: 44px;
+  height: 32px;
+  font-size: 14px;
+}
+.tlv.cap .tlv-zoom button {
+  height: 32px;
+  min-width: 32px;
+}
+.tlv.cap .tlv-scroll {
+  scrollbar-width: none;
+}
+.tlv.cap .tlv-scroll::-webkit-scrollbar {
+  display: none;
+}
+.tlv.cap .tlv-ruler {
+  height: 26px;
+  cursor: default;
+  touch-action: pan-x pan-y;
+}
+.tlv.cap .tlv-ruler span {
+  top: 5px;
+}
+.tlv.cap .tlv-ruler span::after {
+  top: 17px;
+}
+.tlv.cap .lane,
+.tlv.cap .sect-head {
+  touch-action: pan-x pan-y;
+}
+/* 狭いときは行の名前を丸だけにする。半透明にして下の帯を隠しすぎない */
+.tlv.cap .lane-name {
+  background: #1b1a20cc;
+  border-right: 0;
+  padding-left: 4px;
+}
+.tlv.narrow .lane-name span {
+  display: none;
+}
+.tlv.cap.short .tlv-bar {
+  height: 34px;
+}
+.tlv.cap.short .tlv-tools button,
+.tlv.cap.short .tlv-zoom button {
+  height: 28px;
+}
+.tlv.cap.short .mark b {
+  top: 6px;
+  height: 22px;
+}
+.tlv.cap .lane-name i {
+  width: 22px;
+  height: 22px;
+}
+.tlv.cap .sect-name {
+  width: auto;
+  min-width: 64px;
+  background: #121116ee;
+}
+/* 帯は太く。選んでいないものは指で送るのを邪魔しない */
+.tlv.cap .clip {
+  top: 5px;
+  height: calc(100% - 10px);
+  touch-action: pan-x pan-y;
+  cursor: pointer;
+}
+.tlv.cap .clip > span {
+  line-height: inherit;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.tlv.cap .clip.k-on {
+  top: 0;
+  height: 100%;
+}
+.tlv.cap .clip.k-line {
+  border-radius: 8px;
+}
+.tlv.cap .mark {
+  touch-action: pan-x pan-y;
+  cursor: pointer;
+}
+.tlv.cap .mark b {
+  top: 8px;
+  height: 24px;
+  font-size: 12px;
+}
+.tlv.cap .g-sound .mark b,
+.tlv.cap .g-light .mark b {
+  top: 4px;
+  height: 22px;
+}
+/* 選んだもの：白い太枠と、左右のつまみ（CapCut の選択） */
+.tlv.cap .clip.cur,
+.tlv.cap .mark.cur {
+  touch-action: none;
+  cursor: grab;
+}
+.tlv.cap .clip.cur:not(.k-on) {
+  outline: 3px solid #fff;
+  outline-offset: 0;
+  z-index: 5;
+}
+.tlv.cap .clip .edge {
+  width: 18px;
+  background: #fff;
+}
+.tlv.cap .clip .edge::after {
+  left: 7px;
+  width: 4px;
+  top: 30%;
+  bottom: 30%;
+  background: #1b1a20;
+  opacity: 1;
+  box-shadow: none;
+}
+.tlv.cap .clip.k-on .edge {
+  background: var(--c);
+}
+.tlv.cap .clip.k-on .edge::after {
+  background: #fff;
+}
+.tlv.cap .mark.cur b {
+  box-shadow: 0 0 0 3px #fff, 0 1px 2px #0008;
+}
+/* 真ん中に固定した再生位置 */
+.tlv-head.center {
+  left: 50%;
+  top: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 4px #000;
+}
+.tlv-head.center::before {
+  display: none;
+}
+.tlv-head.center span {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #fff;
+  color: #111;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tlv-head.center small {
+  font-weight: 600;
+  color: #666;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tlv-scroll {
+    scroll-behavior: auto;
+  }
+}
+
+/* ===== スマホは横向きだけ。縦に持ったら回してもらう ===== */
+.rotate-hint {
+  display: none;
+}
+@media (orientation: portrait) and (pointer: coarse) and (max-width: 600px) {
+  .rotate-hint {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: #1b1a20;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 800;
+    text-align: center;
+  }
+  .rotate-hint i {
+    font-style: normal;
+    display: block;
+    width: 56px;
+    height: 92px;
+    border: 4px solid #fff;
+    border-radius: 12px;
+    animation: rotate-hint 2.4s ease-in-out infinite;
+  }
+  .rotate-hint small {
+    font-size: 13px;
+    font-weight: 500;
+    color: #a9a59d;
+  }
+}
+@keyframes rotate-hint {
+  0%,
+  30% {
+    transform: rotate(0);
+  }
+  60%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-hint i {
+    animation: none;
+    transform: rotate(-90deg);
+  }
+}
+/* 横向きで背が低い画面（スマホ）：ヘッダと時間軸を詰め、タイムラインを開いても舞台が残るようにする */
+@media (max-height: 520px) {
+  .stage-app header {
+    padding: 3px 8px;
+    padding-top: max(3px, env(safe-area-inset-top));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+  .stage-app header button,
+  .stage-app header .docbtn {
+    min-height: 30px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  .dev.transport {
+    gap: 2px;
+  }
+  .dev.transport .keys button {
+    font-size: 18px;
+  }
+  /* 舞台と道具に半分ほど残す */
+  .tl-box {
+    max-height: max(130px, calc(54dvh - 80px));
+  }
+  .tlv.cap.short .tlv-ruler {
+    height: 22px;
+  }
+  .tlv.cap.short .tlv-ruler span {
+    top: 3px;
+  }
+  .tlv.cap.short .tlv-ruler span::after {
+    top: 15px;
+  }
+  .tlv.cap.short .tlv-head.center span {
+    top: 1px;
+  }
+  .tlv.cap.short .sect-head {
+    height: 18px;
+  }
+  .tlv.cap.short .mark b {
+    top: 5px;
+    height: 20px;
+  }
+  .tlv.cap.short .g-sound .mark b,
+  .tlv.cap.short .g-light .mark b {
+    top: 2px;
+    height: 18px;
+  }
+  .tlv.cap.short .clip {
+    top: 4px;
+    height: calc(100% - 8px);
   }
 }

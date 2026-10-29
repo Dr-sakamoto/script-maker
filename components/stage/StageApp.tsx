@@ -11,11 +11,13 @@ import { histReducer, initHist } from '../../lib/stage/history';
 import { parseItems } from '../../lib/stage/io';
 import { allStates, cueName, initialState, isDark, nextCueNo, WING, type Place, type StageState } from '../../lib/stage/state';
 import { indexAt, timeline } from '../../lib/stage/timing';
+import { placeAt } from '../../lib/stage/tracks';
 import type { CastMember, Doc, Item, NewItem, PinNo, Role } from '../../lib/stage/types';
 import { LAYERS, type Layer } from './chips';
 import { clock } from './clock';
 import { CastBox, LightConsole, PropBox, SoundDevice, Transport } from './Desk';
 import { HandOff } from './HandOff';
+import { TimelineView } from './TimelineView';
 import { Info } from './Info';
 import { PrintSheet } from './PrintSheet';
 import { InputBar } from './InputBar';
@@ -351,6 +353,70 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     return () => cancelAnimationFrame(raf);
   }, [playing]);
 
+  // --- 引き出すタイムライン（人・音・光・モノの行）。開き具合は端末ごとに覚えておく
+  // 指で触る端末は横向きで使う。ホーム画面のアプリ・全画面なら向きを固定できる（できなければ回してもらう表示に任せる）
+  useEffect(() => {
+    if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+    const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    o?.lock?.('landscape').catch(() => {});
+  }, []);
+  const [tlOpen, setTlOpenRaw] = useState(false);
+  const [tlHeight, setTlHeightRaw] = useState(260);
+  useEffect(() => {
+    try {
+      setTlOpenRaw(localStorage.getItem('stage:tl-open') === '1');
+      const h = Number(localStorage.getItem('stage:tl-h'));
+      if (h > 0) setTlHeightRaw(h);
+    } catch {
+      /* noop */
+    }
+  }, []);
+  const setTlOpen = (v: boolean) => {
+    setTlOpenRaw(v);
+    try {
+      localStorage.setItem('stage:tl-open', v ? '1' : '0');
+    } catch {
+      /* noop */
+    }
+  };
+  const setTlHeight = (h: number) => {
+    setTlHeightRaw(h);
+    try {
+      localStorage.setItem('stage:tl-h', String(Math.round(h)));
+    } catch {
+      /* noop */
+    }
+  };
+  /** タイムラインで帯・印を触った：その項目へ（そこが書き込み位置になる） */
+  const onPick = (itemId: string) => {
+    const i = ref.current.doc.items.findIndex((x) => x.id === itemId);
+    if (i >= 0) setCursor(i);
+  };
+  /** 帯・印を時刻 t へドラッグした：その位置へ並べ替える（きっかけが変わる） */
+  const onPlace = (itemId: string, t: number) => {
+    const next = placeAt(ref.current.doc.items, itemId, t);
+    const i = next.findIndex((x) => x.id === itemId);
+    commit({ items: next, cursor: i });
+    clock.set(timeline(next).starts[i] ?? 0);
+  };
+  /** 間の帯の長さを変えた（0.5秒きざみ） */
+  /** タイムラインで選んでいるものを一つ前・後ろへ */
+  const onNudge = (itemId: string, dir: -1 | 1) => {
+    const { items } = ref.current.doc;
+    const i = items.findIndex((x) => x.id === itemId);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= items.length) return;
+    const next = moveBefore(items, itemId, dir < 0 ? items[j].id : (items[j + 1]?.id ?? null));
+    const k = next.findIndex((x) => x.id === itemId);
+    commit({ items: next, cursor: k });
+    clock.set(timeline(next).starts[k] ?? 0);
+  };
+  const onResizeMa = (itemId: string, sec: number) => {
+    const s = Math.max(0.5, Math.round(sec * 2) / 2);
+    const { doc, cursor } = ref.current;
+    commit({ items: updateItem(doc.items, itemId, { s } as Partial<Item>), cursor });
+  };
+
   const onSeek = useCallback((t: number) => {
     const tl = timeline(ref.current.doc.items);
     clock.set(t);
@@ -580,9 +646,34 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
             onRedo={() => dispatch({ type: 'redo' })}
             onMa={onMa}
             onFull={enterShow}
-          />
+            expanded={tlOpen}
+            onExpand={setTlOpen}
+            height={tlHeight}
+            onHeight={setTlHeight}
+          >
+            <TimelineView
+              doc={doc}
+              states={states}
+              tl={tl}
+              cursorItemId={items[cursor]?.id}
+              playing={playing}
+              onSeek={onSeek}
+              onPick={onPick}
+              onPlace={onPlace}
+              onResizeMa={onResizeMa}
+              onNudge={onNudge}
+              onRemove={onRemove}
+              onPause={() => playing && togglePlay()}
+            />
+          </Transport>
         )}
       </footer>
+      {/* スマホは横向きだけ。縦に持ったら回してもらう */}
+      <div className="rotate-hint" role="alert">
+        <i aria-hidden />
+        横向きにしてください
+        <small>舞台とタイムラインを横に広く使います</small>
+      </div>
     </div>
     <div className="print-only">
       <PrintSheet doc={doc} />
