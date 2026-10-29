@@ -84,11 +84,11 @@ export function buildLanes(doc: Doc, tl: Timeline = timeline(doc.items), states:
   for (const it of items) if (it.t === 'cue' && it.x) reg[it.n] = it.x;
   const sndLane = (n: number) => lane(`snd:${n}`, 'sound', `♪${n}${reg[n] ? ` ${reg[n]}` : ''}`);
   const lit: Record<string, { t: number; itemId: string; fadeIn?: number } | undefined> = {};
-  const lightLane = (p?: number) => lane(p ? `pin:${p}` : 'light', 'light', p ? `◎${p}（${['下手', '中央', '上手'][p - 1]}）` : '全体');
+  const lightLane = (p?: number) => lane(p ? `pin:${p}` : 'light', 'light', p ? `ピン ${['下手', '中央', '上手'][p - 1]}` : '舞台全体');
   const closeLight = (k: string, p: number | undefined, t: number, itemId: string, fadeOut?: number) => {
     const o = lit[k];
     if (!o) return;
-    lightLane(p).clips.push({ key: `light:${k}:${o.itemId}`, kind: 'light', start: o.t, end: t + (fadeOut ?? 0), itemId: o.itemId, endItemId: itemId || undefined, fadeIn: o.fadeIn, fadeOut });
+    lightLane(p).clips.push({ key: `light:${k}:${o.itemId}`, kind: 'light', label: p ? 'ピン' : '明るい', start: o.t, end: t + (fadeOut ?? 0), itemId: o.itemId, endItemId: itemId || undefined, fadeIn: o.fadeIn, fadeOut });
     lit[k] = undefined;
   };
 
@@ -97,18 +97,18 @@ export function buildLanes(doc: Doc, tl: Timeline = timeline(doc.items), states:
     switch (it.t) {
       case 'line': {
         const m = member(cast, it.w);
-        const l = m?.kind === 'puppet' ? lane(it.w, 'people', m.name, m.color) : m ? thingLane(m) : lane('stage', 'stage', '全体');
+        const l = m?.kind === 'puppet' ? lane(it.w, 'people', m.name, m.color) : m ? thingLane(m) : lane('stage', 'stage', '間・ト書き');
         l.clips.push({ key: `c:${it.id}`, kind: 'line', start: t0, end: end(i), itemId: it.id, label: it.x || '…', color: m?.color });
         break;
       }
       case 'act': {
         const m = member(cast, it.w);
-        const l = m ? (m.kind === 'puppet' ? lane(m.id, 'people', m.name, m.color) : thingLane(m)) : lane('stage', 'stage', '全体');
+        const l = m ? (m.kind === 'puppet' ? lane(m.id, 'people', m.name, m.color) : thingLane(m)) : lane('stage', 'stage', '間・ト書き');
         l.clips.push({ key: `c:${it.id}`, kind: 'act', start: t0, end: end(i), itemId: it.id, label: it.x || '…', color: m?.color });
         break;
       }
       case 'ma':
-        lane('stage', 'stage', '全体').clips.push({ key: `c:${it.id}`, kind: 'ma', start: t0, end: end(i), itemId: it.id, label: `・・ ${it.s}″` });
+        lane('stage', 'stage', '間・ト書き').clips.push({ key: `c:${it.id}`, kind: 'ma', start: t0, end: end(i), itemId: it.id, label: `間 ${it.s}″` });
         break;
       case 'move': {
         const m = member(cast, it.w);
@@ -203,4 +203,11 @@ export function placeAt(items: Item[], id: string, t: number): Item[] {
   const mid = tl.starts[j] + tl.durs[j] / 2;
   if (t > mid) j += 1;
   return moveBefore(items, id, j < rest.length ? rest[j].id : null);
+}
+
+/** 時刻 t へ動かしたら、実際にどこから始まるか（どの項目の後ろに入るか）。ドラッグ中の行き先の表示に使う */
+export function placedAt(items: Item[], id: string, t: number): { start: number; after?: string } {
+  const next = placeAt(items, id, t);
+  const i = next.findIndex((x) => x.id === id);
+  return { start: timeline(next).starts[i] ?? 0, after: next[i - 1]?.id };
 }

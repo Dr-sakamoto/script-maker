@@ -1522,11 +1522,117 @@
 .tlv {
   position: relative;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   color: #e9e6df;
+  font-size: 12px;
+  --label: 112px;
+}
+/* 上の帯：選んでいるもの／ドラッグの行き先と、拡大縮小 */
+.tlv-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  background: #2c2b32;
+  border-bottom: 1px solid #3a3940;
+}
+.tlv-say {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.tlv-say em {
+  font-style: normal;
+  font-weight: 500;
+  color: #a9a59d;
+}
+.tlv-say.drag {
+  color: #fff;
+}
+.tlv-say.drag::before {
+  content: '⇆ ';
+  color: #ff5a4f;
+}
+.tlv-zoom {
+  flex: none;
+  display: flex;
+  gap: 3px;
+}
+.tlv-zoom button {
+  min-width: 26px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #4a4950;
+  border-radius: 5px;
+  background: #1f1e24;
+  color: #e9e6df;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.tlv-zoom button.on {
+  background: #e9e6df;
+  color: #111;
+}
+/* 見かた */
+.tlv-help {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 10px;
+  background: #24232a;
+  border-bottom: 1px solid #3a3940;
+}
+.tlv-help .ex {
+  position: relative;
+  left: auto;
+  top: auto;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+}
+.tlv-help .clip.ex > span {
+  line-height: 22px;
+}
+.tlv-help .ex.on,
+.tlv-help .ex.off {
+  padding: 0 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.tlv-help .ex.on {
+  background: color-mix(in srgb, #d9822b 26%, #1b1a20);
+}
+.tlv-help .ex.off {
+  background: repeating-linear-gradient(135deg, #2a2930 0 4px, #1b1a20 4px 8px);
+  color: #8a8790;
+}
+.tlv-help .mark.ex {
+  width: auto;
+}
+.tlv-help .mark.ex b {
+  position: static;
+}
+.tlv-help .mark.ex::before {
+  display: none;
+}
+.tlv-help p {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: #a9a59d;
   font-size: 11px;
 }
 .tlv-scroll {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1537,8 +1643,8 @@
 .tlv-ruler {
   position: sticky;
   top: 0;
-  z-index: 4;
-  height: 20px;
+  z-index: 6;
+  height: 22px;
   background: #26252c;
   border-bottom: 1px solid #3a3940;
   cursor: pointer;
@@ -1549,6 +1655,7 @@
   top: 3px;
   transform: translateX(-50%);
   color: #a9a59d;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
@@ -1556,67 +1663,158 @@
   content: '';
   position: absolute;
   left: 50%;
-  top: 14px;
+  top: 15px;
   height: 4px;
   border-left: 1px solid #6a6770;
+}
+.tlv-ruler span.zero {
+  transform: none;
+  padding-left: 3px;
+}
+.tlv-ruler span.zero::after {
+  left: 0;
+}
+.tlv-end {
+  position: absolute;
+  top: 22px;
+  bottom: 0;
+  right: 0;
+  z-index: 3;
+  background: #121116;
+  border-left: 1px solid #4a4950;
+  pointer-events: none;
 }
 .tlv-corner {
   position: sticky;
   left: 0;
-  z-index: 5;
-  width: 76px;
+  z-index: 7;
+  width: var(--label);
   height: 100%;
-  background: #26252c;
-  border-right: 1px solid #3a3940;
+  background: #ff5a4f;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+/* まとまり（人・音・光・モノ）の見出し。タップで畳む */
+.sect-head {
+  position: relative;
+  height: 22px;
+  background: #121116;
+  border-top: 1px solid #3d3c44;
+  touch-action: pan-y;
+}
+.sect-name {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  width: var(--label);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 0;
+  border-right: 1px solid #3a3940;
+  background: #121116;
+  color: #e9e6df;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+.sect-name b {
+  width: 10px;
+  color: #8a8790;
+  font-size: 10px;
+}
+.sect-name i {
+  font-style: normal;
+  font-size: 10px;
+}
+.s-sound .sect-name i {
+  color: #2cc3b5;
+}
+.s-light .sect-name i {
+  color: #f2c94c;
+}
+.sect-name small {
+  margin-left: auto;
+  color: #8a8790;
+  font-size: 10px;
+  font-weight: 600;
+}
+.mini {
+  position: absolute;
+  top: 9px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--c);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.mini.k-sound {
+  background: #2cc3b5;
+}
+.mini.k-light {
+  background: #f2c94c;
+}
+.mini.k-ma {
+  background: #6a6770;
 }
 .lane {
   position: relative;
   border-bottom: 1px solid #2c2b32;
   touch-action: pan-y;
 }
-.lane:nth-child(odd) {
-  background: #1f1e24;
-}
-.lane.first {
-  border-top: 2px solid #3d3c44;
+/* 人・モノの行：袖にいる間は斜線、舞台にいる間はその色が敷かれる */
+.lane.presence {
+  background: repeating-linear-gradient(135deg, #222128 0 4px, #1b1a20 4px 8px);
 }
 .lane-name {
   position: sticky;
   left: 0;
-  z-index: 3;
-  width: 76px;
+  z-index: 4;
+  width: var(--label);
   height: 100%;
   background: #24232a;
   border-right: 1px solid #3a3940;
-  box-shadow: inset 4px 0 0 var(--c);
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding-left: 8px;
+  gap: 6px;
+  padding-left: 6px;
   overflow: hidden;
   white-space: nowrap;
 }
-.lane-name em {
+.lane-name i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--c);
+  color: #fff;
+  display: grid;
+  place-items: center;
   font-style: normal;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
-  padding: 0 3px;
-  border-radius: 3px;
-  background: #3a3940;
-  color: #cfcac2;
+  text-shadow: 0 1px 1px #0006;
 }
-.g-sound .lane-name em {
+.g-sound .lane-name i {
   background: #2cc3b5;
   color: #04201d;
+  text-shadow: none;
+  font-size: 9px;
 }
-.g-light .lane-name em {
+.g-light .lane-name i {
   background: #f2c94c;
   color: #241b00;
+  text-shadow: none;
+}
+.g-stage .lane-name i {
+  background: #4a4950;
 }
 .lane-name span {
   overflow: hidden;
@@ -1625,9 +1823,9 @@
 }
 .clip {
   position: absolute;
-  top: 4px;
-  height: 18px;
-  border-radius: 4px;
+  top: 5px;
+  height: 22px;
+  border-radius: 5px;
   overflow: hidden;
   white-space: nowrap;
   cursor: grab;
@@ -1637,8 +1835,8 @@
 }
 .clip > span {
   display: block;
-  padding: 0 5px;
-  line-height: 18px;
+  padding: 0 6px;
+  line-height: 22px;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
@@ -1646,21 +1844,24 @@
 .clip.k-line {
   background: var(--c);
   color: #fff;
+  font-weight: 700;
   text-shadow: 0 1px 1px #0008;
+  border-radius: 11px;
+  box-shadow: 0 1px 0 #0006;
   z-index: 2;
 }
 .clip.k-act {
-  background: repeating-linear-gradient(135deg, #0000 0 5px, #ffffff10 5px 9px);
-  border: 2px solid var(--c);
+  background: color-mix(in srgb, var(--c) 18%, #1b1a20);
+  border: 2px dashed var(--c);
   color: #e9e6df;
   z-index: 2;
 }
 .clip.k-act > span {
-  line-height: 14px;
+  line-height: 18px;
 }
 .clip.k-ma {
-  background: #4a4950;
-  color: #e9e6df;
+  background: #3a3940;
+  color: #cfcac2;
   border: 1px dashed #8a8790;
   z-index: 2;
 }
@@ -1668,43 +1869,51 @@
   top: 0;
   height: 100%;
   border-radius: 0;
-  background: color-mix(in srgb, var(--c) 20%, transparent);
+  background: color-mix(in srgb, var(--c) 26%, #1b1a20);
+  border-left: 2px solid var(--c);
   cursor: pointer;
   z-index: 1;
 }
 .clip.k-held {
-  top: 13px;
-  height: 11px;
-  background: color-mix(in srgb, var(--c) 55%, transparent);
-  font-size: 9px;
+  background: color-mix(in srgb, var(--c) 60%, #1b1a20);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
   cursor: pointer;
-  z-index: 1;
-}
-.clip.k-held > span {
-  line-height: 11px;
+  z-index: 2;
 }
 .clip.k-sound {
-  background: linear-gradient(#2cc3b5, #1f9a8f);
+  background: repeating-linear-gradient(90deg, #0000 0 3px, #0001 3px 4px), linear-gradient(#36d3c4, #1f9a8f);
   color: #04201d;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
   z-index: 2;
 }
 .clip.k-light {
   background: linear-gradient(#f7dc7a, #e3b93a);
   color: #241b00;
+  font-weight: 700;
   cursor: pointer;
   z-index: 2;
 }
 .clip.cur {
   outline: 2px solid #fff;
-  outline-offset: -1px;
+  outline-offset: 0;
+}
+.clip.k-on.cur {
+  outline: 0;
+}
+.clip.lift,
+.mark.lift {
+  opacity: 0.85;
+  z-index: 8;
+  filter: drop-shadow(0 3px 4px #000a);
 }
 .clip .edge {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 9px;
+  width: 12px;
   cursor: ew-resize;
   touch-action: none;
 }
@@ -1714,21 +1923,32 @@
 .clip .edge.r {
   right: 0;
 }
+/* つまめる端：音・光・持つ帯は常に、出〜ハケは選んだ時に見せる */
 .clip .edge::after {
   content: '';
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: 3px;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: 4px;
   border-radius: 2px;
-  background: #fff8;
+  background: #fffc;
+  box-shadow: 0 0 0 1px #0004;
   opacity: 0;
 }
+.clip.k-sound .edge::after,
+.clip.k-light .edge::after,
+.clip.k-held .edge::after,
 .clip:hover .edge::after,
 .clip.cur .edge::after {
   opacity: 1;
 }
+.clip.k-on .edge::after {
+  top: 30%;
+  bottom: 30%;
+  background: var(--c);
+}
+/* 印（出・ハケ・移動・持つ・SE など）は旗のように立てる */
 .mark {
   position: absolute;
   top: 0;
@@ -1738,50 +1958,68 @@
   cursor: grab;
   touch-action: none;
 }
-.mark b {
-  position: absolute;
-  left: -5px;
-  top: 7px;
-  width: 10px;
-  height: 10px;
-  transform: rotate(45deg);
-  background: #e9e6df;
-  border: 2px solid #1b1a20;
-}
 .mark::before {
   content: '';
   position: absolute;
   left: -1px;
   top: 0;
   bottom: 0;
-  border-left: 2px solid #e9e6df88;
+  border-left: 2px solid #e9e6df;
 }
-.mark span {
+.mark b {
   position: absolute;
-  left: 8px;
+  left: 0;
   top: 6px;
-  font-size: 10px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 4px;
+  border-radius: 0 10px 10px 0;
+  background: #e9e6df;
+  color: #111;
+  font-size: 11px;
   font-weight: 800;
   white-space: nowrap;
-  pointer-events: none;
-  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  box-shadow: 0 1px 2px #0008;
+}
+.mark b i {
+  font-style: normal;
+  font-size: 9px;
+}
+.mark.mk-enter b {
+  background: #6fd08c;
+}
+.mark.mk-enter::before {
+  border-color: #6fd08c;
+}
+.mark.mk-exit b {
+  background: #8a8790;
+  color: #fff;
+}
+.mark.mk-exit::before {
+  border-color: #8a8790;
 }
 .mark.mk-hold b {
   background: #d9822b;
+  color: #fff;
+}
+.mark.mk-hold::before {
+  border-color: #d9822b;
 }
 .mark.mk-se b,
 .mark.mk-cue b {
   background: #2cc3b5;
 }
+.mark.mk-se::before,
+.mark.mk-cue::before {
+  border-color: #2cc3b5;
+}
 .mark.mk-light b {
   background: #f2c94c;
 }
-.mark.mk-exit b {
-  background: #6a6770;
-}
 .mark.cur b {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px #fff, 0 1px 2px #0008;
 }
 .tlv-head {
   position: absolute;
@@ -1790,24 +2028,26 @@
   width: 2px;
   margin-left: -1px;
   background: #ff5a4f;
-  z-index: 6;
+  z-index: 9;
   pointer-events: none;
 }
 .tlv-head::before {
   content: '';
   position: absolute;
   top: 0;
-  left: -5px;
-  border: 6px solid transparent;
+  left: -6px;
+  border: 7px solid transparent;
   border-top-color: #ff5a4f;
 }
 .tlv-ghost {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-left: 2px dashed #fff;
-  z-index: 7;
+  border-left: 3px solid #fff;
+  margin-left: -1px;
+  z-index: 10;
   pointer-events: none;
+  box-shadow: 0 0 8px #fff8;
 }
 .tlv-ghost span {
   position: absolute;
@@ -1815,32 +2055,10 @@
   left: 4px;
   background: #fff;
   color: #111;
-  border-radius: 3px;
-  padding: 0 4px;
-  font-weight: 800;
-}
-.tlv-zoom {
-  position: absolute;
-  right: 6px;
-  top: 1px;
-  z-index: 8;
-  display: flex;
-  gap: 2px;
-}
-.tlv-zoom button {
-  width: 24px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid #4a4950;
   border-radius: 4px;
-  background: #2c2b32;
-  color: #e9e6df;
-  font-size: 12px;
-  line-height: 1;
-}
-.tlv-zoom button.on {
-  background: #e9e6df;
-  color: #111;
+  padding: 1px 6px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
   .tlv-scroll {
