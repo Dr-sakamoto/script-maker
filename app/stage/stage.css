@@ -1531,7 +1531,10 @@
 /* 上の帯：選んでいるもの／ドラッグの行き先と、拡大縮小 */
 .tlv-bar {
   flex: none;
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-columns: max-content;
   align-items: center;
   gap: 8px;
   height: 28px;
@@ -2060,8 +2063,308 @@
   font-weight: 800;
   white-space: nowrap;
 }
+.tlv-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 選んでいるものの道具 */
+.tlv-tools {
+  flex: none;
+  min-width: max-content;
+  display: flex;
+  gap: 3px;
+}
+.tlv-tools button {
+  flex: none;
+  min-width: 30px;
+  white-space: nowrap;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #5a5862;
+  border-radius: 5px;
+  background: #3a3940;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
+.tlv-tools button.trash {
+  background: #5a2a2a;
+  border-color: #8a3a3a;
+}
+
+/* ===== スマホ：CapCut のように、真ん中の線へ時間を送る ===== */
+.tlv.cap {
+  font-size: 13px;
+}
+.tlv.cap .tlv-bar {
+  height: 40px;
+}
+.tlv.cap .tlv-tools button {
+  min-width: 44px;
+  height: 32px;
+  font-size: 14px;
+}
+.tlv.cap .tlv-zoom button {
+  height: 32px;
+  min-width: 32px;
+}
+.tlv.cap .tlv-scroll {
+  scrollbar-width: none;
+}
+.tlv.cap .tlv-scroll::-webkit-scrollbar {
+  display: none;
+}
+.tlv.cap .tlv-ruler {
+  height: 26px;
+  cursor: default;
+  touch-action: pan-x pan-y;
+}
+.tlv.cap .tlv-ruler span {
+  top: 5px;
+}
+.tlv.cap .tlv-ruler span::after {
+  top: 17px;
+}
+.tlv.cap .lane,
+.tlv.cap .sect-head {
+  touch-action: pan-x pan-y;
+}
+/* 狭いときは行の名前を丸だけにする。半透明にして下の帯を隠しすぎない */
+.tlv.cap .lane-name {
+  background: #1b1a20cc;
+  border-right: 0;
+  padding-left: 4px;
+}
+.tlv.narrow .lane-name span {
+  display: none;
+}
+.tlv.cap.short .tlv-bar {
+  height: 34px;
+}
+.tlv.cap.short .tlv-tools button,
+.tlv.cap.short .tlv-zoom button {
+  height: 28px;
+}
+.tlv.cap.short .mark b {
+  top: 6px;
+  height: 22px;
+}
+.tlv.cap .lane-name i {
+  width: 22px;
+  height: 22px;
+}
+.tlv.cap .sect-name {
+  width: auto;
+  min-width: 64px;
+  background: #121116ee;
+}
+/* 帯は太く。選んでいないものは指で送るのを邪魔しない */
+.tlv.cap .clip {
+  top: 5px;
+  height: calc(100% - 10px);
+  touch-action: pan-x pan-y;
+  cursor: pointer;
+}
+.tlv.cap .clip > span {
+  line-height: inherit;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.tlv.cap .clip.k-on {
+  top: 0;
+  height: 100%;
+}
+.tlv.cap .clip.k-line {
+  border-radius: 8px;
+}
+.tlv.cap .mark {
+  touch-action: pan-x pan-y;
+  cursor: pointer;
+}
+.tlv.cap .mark b {
+  top: 8px;
+  height: 24px;
+  font-size: 12px;
+}
+.tlv.cap .g-sound .mark b,
+.tlv.cap .g-light .mark b {
+  top: 4px;
+  height: 22px;
+}
+/* 選んだもの：白い太枠と、左右のつまみ（CapCut の選択） */
+.tlv.cap .clip.cur,
+.tlv.cap .mark.cur {
+  touch-action: none;
+  cursor: grab;
+}
+.tlv.cap .clip.cur:not(.k-on) {
+  outline: 3px solid #fff;
+  outline-offset: 0;
+  z-index: 5;
+}
+.tlv.cap .clip .edge {
+  width: 18px;
+  background: #fff;
+}
+.tlv.cap .clip .edge::after {
+  left: 7px;
+  width: 4px;
+  top: 30%;
+  bottom: 30%;
+  background: #1b1a20;
+  opacity: 1;
+  box-shadow: none;
+}
+.tlv.cap .clip.k-on .edge {
+  background: var(--c);
+}
+.tlv.cap .clip.k-on .edge::after {
+  background: #fff;
+}
+.tlv.cap .mark.cur b {
+  box-shadow: 0 0 0 3px #fff, 0 1px 2px #0008;
+}
+/* 真ん中に固定した再生位置 */
+.tlv-head.center {
+  left: 50%;
+  top: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 4px #000;
+}
+.tlv-head.center::before {
+  display: none;
+}
+.tlv-head.center span {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #fff;
+  color: #111;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tlv-head.center small {
+  font-weight: 600;
+  color: #666;
+}
 @media (prefers-reduced-motion: reduce) {
   .tlv-scroll {
     scroll-behavior: auto;
+  }
+}
+
+/* ===== スマホは横向きだけ。縦に持ったら回してもらう ===== */
+.rotate-hint {
+  display: none;
+}
+@media (orientation: portrait) and (pointer: coarse) and (max-width: 600px) {
+  .rotate-hint {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: #1b1a20;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 800;
+    text-align: center;
+  }
+  .rotate-hint i {
+    font-style: normal;
+    display: block;
+    width: 56px;
+    height: 92px;
+    border: 4px solid #fff;
+    border-radius: 12px;
+    animation: rotate-hint 2.4s ease-in-out infinite;
+  }
+  .rotate-hint small {
+    font-size: 13px;
+    font-weight: 500;
+    color: #a9a59d;
+  }
+}
+@keyframes rotate-hint {
+  0%,
+  30% {
+    transform: rotate(0);
+  }
+  60%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-hint i {
+    animation: none;
+    transform: rotate(-90deg);
+  }
+}
+/* 横向きで背が低い画面（スマホ）：ヘッダと時間軸を詰め、タイムラインを開いても舞台が残るようにする */
+@media (max-height: 520px) {
+  .stage-app header {
+    padding: 3px 8px;
+    padding-top: max(3px, env(safe-area-inset-top));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+  .stage-app header button,
+  .stage-app header .docbtn {
+    min-height: 30px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  .dev.transport {
+    gap: 2px;
+  }
+  .dev.transport .keys button {
+    font-size: 18px;
+  }
+  /* 舞台と道具に半分ほど残す */
+  .tl-box {
+    max-height: max(130px, calc(54dvh - 80px));
+  }
+  .tlv.cap.short .tlv-ruler {
+    height: 22px;
+  }
+  .tlv.cap.short .tlv-ruler span {
+    top: 3px;
+  }
+  .tlv.cap.short .tlv-ruler span::after {
+    top: 15px;
+  }
+  .tlv.cap.short .tlv-head.center span {
+    top: 1px;
+  }
+  .tlv.cap.short .sect-head {
+    height: 18px;
+  }
+  .tlv.cap.short .mark b {
+    top: 5px;
+    height: 20px;
+  }
+  .tlv.cap.short .g-sound .mark b,
+  .tlv.cap.short .g-light .mark b {
+    top: 2px;
+    height: 18px;
+  }
+  .tlv.cap.short .clip {
+    top: 4px;
+    height: calc(100% - 8px);
   }
 }

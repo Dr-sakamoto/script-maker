@@ -354,6 +354,12 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   }, [playing]);
 
   // --- 引き出すタイムライン（人・音・光・モノの行）。開き具合は端末ごとに覚えておく
+  // 指で触る端末は横向きで使う。ホーム画面のアプリ・全画面なら向きを固定できる（できなければ回してもらう表示に任せる）
+  useEffect(() => {
+    if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+    const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    o?.lock?.('landscape').catch(() => {});
+  }, []);
   const [tlOpen, setTlOpenRaw] = useState(false);
   const [tlHeight, setTlHeightRaw] = useState(260);
   useEffect(() => {
@@ -394,6 +400,17 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     clock.set(timeline(next).starts[i] ?? 0);
   };
   /** 間の帯の長さを変えた（0.5秒きざみ） */
+  /** タイムラインで選んでいるものを一つ前・後ろへ */
+  const onNudge = (itemId: string, dir: -1 | 1) => {
+    const { items } = ref.current.doc;
+    const i = items.findIndex((x) => x.id === itemId);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= items.length) return;
+    const next = moveBefore(items, itemId, dir < 0 ? items[j].id : (items[j + 1]?.id ?? null));
+    const k = next.findIndex((x) => x.id === itemId);
+    commit({ items: next, cursor: k });
+    clock.set(timeline(next).starts[k] ?? 0);
+  };
   const onResizeMa = (itemId: string, sec: number) => {
     const s = Math.max(0.5, Math.round(sec * 2) / 2);
     const { doc, cursor } = ref.current;
@@ -644,10 +661,19 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
               onPick={onPick}
               onPlace={onPlace}
               onResizeMa={onResizeMa}
+              onNudge={onNudge}
+              onRemove={onRemove}
+              onPause={() => playing && togglePlay()}
             />
           </Transport>
         )}
       </footer>
+      {/* スマホは横向きだけ。縦に持ったら回してもらう */}
+      <div className="rotate-hint" role="alert">
+        <i aria-hidden />
+        横向きにしてください
+        <small>舞台とタイムラインを横に広く使います</small>
+      </div>
     </div>
     <div className="print-only">
       <PrintSheet doc={doc} />
