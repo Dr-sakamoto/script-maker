@@ -1,12 +1,16 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { askPersist, snapshot } from '../../lib/backup';
+import { QUICK_UNIT_NAME } from '../../lib/quick';
 import { pushScript } from '../../lib/cloud';
 import { loadLocalScripts, saveLocalScripts } from '../../lib/storage';
 import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
 import { MARKS, member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
-import { insertAfter, moveBefore, removeItem, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
+import { insertAfter, mergePrev, moveBefore, moveRow, removeItem, splitBody, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
+import { templateFor } from '../../lib/stage/templates';
 import { histReducer, initHist } from '../../lib/stage/history';
 import { parseScriptText, type ImportResult } from '../../lib/stage/importText';
 import { readScriptFile } from '../../lib/stage/scriptFile';
@@ -21,8 +25,13 @@ import { Info } from './Info';
 import { PrintSheet } from './PrintSheet';
 import { InputBar } from './InputBar';
 import { ScriptView } from './ScriptView';
-import { Stage } from './Stage';
 import { TimeBar } from './TimeBar';
+
+// three.js（舞台）は重いので「つくる」を開いたときだけ読み込む。「かく」「わたす」では読まない
+const Stage = dynamic(() => import('./Stage').then((m) => m.Stage), {
+  ssr: false,
+  loading: () => <div className="stage-loading">舞台を用意しています…</div>,
+});
 
 /** つくる＝舞台を触って作る／かく＝台本を速記する／わたす＝書き出す */
 type Mode = 'make' | 'write' | 'hand';
@@ -33,9 +42,37 @@ const MODES: [Mode, string][] = [
 ];
 const modeFromUrl = (): Mode => {
   const m = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('mode');
-  return m === 'write' || m === 'hand' ? m : 'make';
+  // 何も無ければ「かく」から（スマホで速く書くのが一番多い使い方）
+  return m === 'make' || m === 'hand' ? m : 'write';
 };
 type Theme = 'auto' | 'light' | 'dark';
+
+/**
+ * スマホのキーボードが出たら、見えている高さに画面を合わせる（入力欄がキーボードの下に隠れないように）。
+ * iOS Safari は 100dvh がキーボードで縮まないので visualViewport で測る
+ */
+function useVisualViewportHeight() {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const el = document.documentElement;
+    const f = () => {
+      el.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
+      // キーボードで押し上げられた分を戻す
+      if (vv.offsetTop) window.scrollTo(0, 0);
+    };
+    f();
+    vv.addEventListener('resize', f);
+    vv.addEventListener('scroll', f);
+    return () => {
+      vv.removeEventListener('resize', f);
+      vv.removeEventListener('scroll', f);
+      el.style.removeProperty('--app-h');
+    };
+  }, []);
+}
+
+const hm = (t: number) => new Date(t).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 
 function useReducedMotion() {
   const [v, setV] = useState(false);
@@ -87,6 +124,11 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   const [scrollKey, setScrollKey] = useState(0);
   const [theme, setTheme] = useState<Theme>('auto');
   const reduced = useReducedMotion();
+  useVisualViewportHeight();
+  /** 最後に端末へ保存した時刻 */
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  /** 分けた・つなげた行へカーソルを移す */
+  const [focusReq, setFocusReq] = useState<{ id: string; caret: number; n: number } | null>(null);
 
   const { doc, cursor } = h;
   const { items, cast } = doc;
@@ -114,7 +156,17 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     }
     const t = setTimeout(() => {
       const all = loadLocalScripts();
-      saveLocalScripts(all.map((s) => (s.id === script.id ? scriptWithDoc(s, doc) : s)));
+      const next = all.map((s) => (s.id === script.id ? scriptWithDoc(s, doc) : s));
+      try {
+        saveLocalScripts(next);
+        setSavedAt(Date.now());
+      } catch (err) {
+        console.error(err);
+        setSavedAt(null);
+      }
+      // 端末の別の場所（IndexedDB）にも版をとっておく（1分に1回）
+      const mine = next.find((s) => s.id === script.id);
+      if (mine) void snapshot(mine);
     }, 300);
     const c = setTimeout(() => {
       const mine = loadLocalScripts().find((s) => s.id === script.id);
@@ -127,7 +179,10 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   }, [doc, script.id]);
 
   // --- テーマ
-  useEffect(() => setTheme(readTheme()), []);
+  useEffect(() => {
+    setTheme(readTheme());
+    askPersist();
+  }, []);
   useEffect(() => {
     const el = document.documentElement;
     if (theme === 'auto') el.removeAttribute('data-theme');
@@ -172,6 +227,32 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     (id: string) => {
       const { doc, cursor } = ref.current;
       commit(removeItem(doc.items, cursor, id));
+    },
+    [commit],
+  );
+  const onMoveRow = useCallback(
+    (id: string, beforeId: string | null) => {
+      const { doc } = ref.current;
+      const next = moveRow(doc.items, id, beforeId);
+      commit({ items: next, cursor: next.findIndex((x) => x.id === id) });
+    },
+    [commit],
+  );
+  const onSplit = useCallback(
+    (id: string, at: number) => {
+      const e = splitBody(ref.current.doc.items, id, at);
+      if (!e) return;
+      commit(e);
+      setFocusReq((f) => ({ id: e.items[e.cursor].id, caret: 0, n: (f?.n ?? 0) + 1 }));
+    },
+    [commit],
+  );
+  const onMergePrev = useCallback(
+    (id: string) => {
+      const e = mergePrev(ref.current.doc.items, id);
+      if (!e) return;
+      commit(e);
+      setFocusReq((f) => ({ id: e.id, caret: e.caret, n: (f?.n ?? 0) + 1 }));
     },
     [commit],
   );
@@ -297,7 +378,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   /** 「わたす」の表紙・配役・音源の直し */
   const onInfo = (patch: Partial<Doc>, group: string) => dispatch({ type: 'commit', doc: { ...ref.current.doc, ...patch }, group: `info:${group}` });
   /** 人形箱の＋：新しい人形（色と○●は自動） */
-  const onAddPuppet = (name: string) => {
+  const onAddPuppet = (name: string): Role => {
     const d = ref.current.doc;
     const k = d.cast.filter((c) => c.kind === 'puppet').length;
     const m: CastMember = {
@@ -310,6 +391,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       home: k % 2 === 0 ? 'L' : 'R',
     };
     dispatch({ type: 'commit', doc: { ...d, cast: [...d.cast, m] } });
+    return m.id;
   };
   /** 小道具箱の＋：新しい小道具（色は自動） */
   const onAddProp = (name: string, kind: 'prop' | 'set') => {
@@ -432,6 +514,20 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   };
   const onPaste = (text: string) => applyImport(parseScriptText(text, ref.current.doc.cast));
   const onTitle = (title: string) => dispatch({ type: 'commit', doc: { ...ref.current.doc, title }, group: 'title' });
+  /** 空の台本に、種類ごとのひな形（頭とお尻）を入れる */
+  const onTemplate = () => {
+    const d = ref.current.doc;
+    // 「すぐ書く」の仮のユニット名は台本に書かない
+    const t = templateFor(d.genre, d.cast, d.unit === QUICK_UNIT_NAME ? '' : d.unit);
+    if (!t || d.items.length) return;
+    dispatch({ type: 'commit', doc: { ...d, items: t.items }, cursor: t.cursor });
+    setScrollKey((k) => k + 1);
+  };
+  const atEnd = cursor >= items.length - 1;
+  const toEnd = () => {
+    setCursor(items.length - 1);
+    setScrollKey((k) => k + 1);
+  };
 
   const make = mode === 'make';
   const atTop = full && !playing && cursor <= boardEnd && isDark(st);
@@ -514,6 +610,12 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       onEdit={onEdit}
       onRemove={onRemove}
       onMoveChip={onMoveChip}
+      onMoveRow={onMoveRow}
+      onSplit={onSplit}
+      onMergePrev={onMergePrev}
+      focusReq={focusReq}
+      template={templateFor(doc.genre, cast) ? doc.genre : undefined}
+      onTemplate={onTemplate}
     />
   );
 
@@ -524,7 +626,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
         <a className="docbtn" href="/" aria-label="ネタ一覧へ">
           ←
         </a>
-        <input className="title" value={doc.title} onChange={(e) => onTitle(e.target.value)} aria-label="題" />
+        <input className="title" value={doc.title} placeholder="無題" onChange={(e) => onTitle(e.target.value)} aria-label="題" />
         <span className="undo" hidden={make}>
           <button disabled={!h.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="元に戻す">
             ↶
@@ -540,9 +642,6 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
             </button>
           ))}
         </nav>
-        <button className="theme" onClick={() => setTheme(theme === 'auto' ? 'light' : theme === 'light' ? 'dark' : 'auto')} aria-label="テーマ">
-          {theme === 'auto' ? '◐' : theme === 'light' ? '○' : '●'}
-        </button>
       </header>
 
       <main>
@@ -571,14 +670,40 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
         )}
         {mode === 'write' && (
           <section className="right">
-            {sheet}
+            <div className="sheetbar">
+              {sheet}
+              <span className={`saved${savedAt ? '' : ' none'}`} title="この端末に保存した時刻（1分ごとに別の場所にも控えをとっています）">
+                {savedAt ? `✓ ${hm(savedAt)}` : ''}
+              </span>
+            </div>
             {scriptView}
+            {!atEnd && (
+              <button className="toend" onClick={toEnd}>
+                ⤓ 末尾へ
+              </button>
+            )}
           </section>
         )}
         {mode === 'hand' && (
           <section className="hand">
             <HandOff doc={doc} onImport={onImport} onPaste={onPaste} onPrint={() => window.print()}>
               <Info doc={doc} onChange={onInfo} />
+              <div className="prefs">
+                <span>画面の明るさ</span>
+                <span className="seg">
+                  {(
+                    [
+                      ['auto', '端末に合わせる'],
+                      ['light', '明るい'],
+                      ['dark', '暗い'],
+                    ] as [Theme, string][]
+                  ).map(([v, l]) => (
+                    <button key={v} className={theme === v ? 'on' : ''} onClick={() => setTheme(v)}>
+                      {l}
+                    </button>
+                  ))}
+                </span>
+              </div>
             </HandOff>
           </section>
         )}
@@ -586,7 +711,19 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
 
       <footer>
         {mode === 'write' && (
-          <InputBar cast={cast} role={role} kind={kind} onRole={onTapRole} onKind={setKind} onSubmit={onSubmit} onMa={onMa} onSE={onSE} autoFocus />
+          <InputBar
+            cast={cast}
+            role={role}
+            kind={kind}
+            onRole={onTapRole}
+            onKind={setKind}
+            onSubmit={onSubmit}
+            onMa={onMa}
+            onSE={onSE}
+            onAddRole={(name) => setRole(onAddPuppet(name))}
+            onRename={(r, name) => onCast(r, { name })}
+            autoFocus
+          />
         )}
         {mode === 'write' && <TimeBar cast={cast} items={items} states={states} tl={tl} playing={playing} onToggle={togglePlay} onSeek={onSeek} />}
         {make && (

@@ -5,7 +5,7 @@
  * - アイコンなど：キャッシュを出しつつ裏で更新
  * - 別オリジン（Supabase など）や POST は触らない
  */
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `script-maker-${VERSION}`;
 const PRECACHE = ['/', '/stage', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 

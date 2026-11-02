@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { exportDoc, type ExportKind } from '../../lib/stage/export';
 import { SCRIPT_FILE_ACCEPT } from '../../lib/stage/scriptFile';
 import type { Doc } from '../../lib/stage/types';
@@ -38,6 +38,18 @@ export function HandOff(p: {
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   };
+  // LINE などへそのまま送る（スマホの共有シート）。無い端末ではボタンを出さない
+  const [canShare, setCanShare] = useState(false);
+  useEffect(() => setCanShare(typeof navigator !== 'undefined' && typeof navigator.share === 'function'), []);
+  const share = async () => {
+    const label = KINDS.find((k) => k.v === kind)?.label ?? '台本';
+    const title = `${p.doc.title || '無題'}（${label}）`;
+    try {
+      await navigator.share({ title, text: `${title}\n\n${text}` });
+    } catch {
+      /* 閉じただけ */
+    }
+  };
   const download = () => {
     const blob = new Blob([JSON.stringify({ items: p.doc.items }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -69,6 +81,11 @@ export function HandOff(p: {
         <button className="copy" onClick={copy}>
           {copied ? '✓ コピーした' : '⧉ コピー'}
         </button>
+        {canShare && (
+          <button className="copy share" onClick={share}>
+            ↗ 送る
+          </button>
+        )}
       </div>
       <textarea ref={ta} readOnly value={text} className="export" />
       <div className="files">
