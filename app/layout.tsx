@@ -11,12 +11,12 @@ export const metadata: Metadata = {
     icon: [{ url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' }, { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
     apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
-  appleWebApp: { capable: true, title: '台本', statusBarStyle: 'black-translucent' },
+  appleWebApp: { capable: true, title: '台本', statusBarStyle: 'default' },
   formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0f172a',
+  themeColor: [{ media: '(prefers-color-scheme: light)', color: '#f6f4ef' }, { media: '(prefers-color-scheme: dark)', color: '#141316' }],
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',

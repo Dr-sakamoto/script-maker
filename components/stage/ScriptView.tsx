@@ -21,9 +21,21 @@ type Props = {
   onEdit: (id: string, patch: Partial<Item>) => void;
   onRemove: (id: string) => void;
   onMoveChip: (id: string, beforeId: string | null) => void;
+  /** 行（セリフ・動き）を直前のチップごと別の行の前へ。null は末尾 */
+  onMoveRow: (id: string, beforeId: string | null) => void;
+  onSplit: (id: string, at: number) => void;
+  onMergePrev: (id: string) => void;
+  /** 分けた・つなげた行へカーソルを移す */
+  focusReq: { id: string; caret: number; n: number } | null;
+  /** 空の台本に出すひな形の名前（漫才・コント…）。押すと入る */
+  template?: string;
+  onTemplate?: () => void;
 };
 
-type ChipDrag = { id: string; x: number; y: number; over: string | null; text: string };
+type ChipDrag = { id: string; x: number; y: number; over: string | null; text: string; row?: boolean };
+type Swipe = { id: string; dx: number };
+/** これ以上左へ払うと消す */
+const SWIPE_DEL = 96;
 
 export const ScriptView = memo(function ScriptView(p: Props) {
   const rows = groupRows(p.items);
@@ -31,6 +43,7 @@ export const ScriptView = memo(function ScriptView(p: Props) {
   const before = (i: number) => (i > 0 ? p.states[i - 1] : init);
   const sel = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<ChipDrag | null>(null);
+  const [swipe, setSwipe] = useState<Swipe | null>(null);
   const dim = (l: Layer) => (p.layers.size && !p.layers.has(l) ? ' dim' : '');
 
   useEffect(() => {
@@ -40,6 +53,89 @@ export const ScriptView = memo(function ScriptView(p: Props) {
   const lineRoles = [...puppets(p.cast), ...p.cast.filter((c) => c.kind === 'prop')];
   const actRoles: (string | undefined)[] = [...puppets(p.cast).map((c) => c.id), undefined];
   const cycle = <T,>(list: T[], v: T) => list[(list.indexOf(v) + 1) % list.length];
+
+  const rowAt = (x: number, y: number) => {
+    const el = document.elementFromPoint(x, y)?.closest('[data-row]') as HTMLElement | null;
+    return el ? (el.dataset.row ?? '') : null;
+  };
+
+  /** 行のつまみ（⠿）：掴んで別の行の前へ */
+  const handleDown = (id: string, text: string) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    let cur: ChipDrag = { id, x: e.clientX, y: e.clientY, over: null, text, row: true };
+    setDrag(cur);
+    navigator.vibrate?.(10);
+    const move = (ev: PointerEvent) => {
+      ev.preventDefault();
+      cur = { ...cur, x: ev.clientX, y: ev.clientY, over: rowAt(ev.clientX, ev.clientY) };
+      setDrag(cur);
+    };
+    const up = (ev: PointerEvent) => {
+      cleanup();
+      setDrag(null);
+      const over = rowAt(ev.clientX, ev.clientY);
+      if (over != null && over !== id) p.onMoveRow(id, over || null);
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+    };
+    const cancel = () => {
+      cleanup();
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+  };
+
+  /** 行を左へ払うと消す（↶ で戻せる）。打っている欄の中からは始めない */
+  const rowDown = (id: string) => (e: React.PointerEvent) => {
+    if (!id || e.pointerType === 'mouse') return;
+    const t = e.target as HTMLElement;
+    if (t.closest('.chip, .panel, .del, .grip') || t === document.activeElement) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let dx = 0;
+    let on = false;
+    const move = (ev: PointerEvent) => {
+      const mx = ev.clientX - x0;
+      const my = ev.clientY - y0;
+      if (!on) {
+        if (Math.abs(my) > 10) return cleanup();
+        if (Math.abs(mx) < 14) return;
+        on = true;
+      }
+      dx = Math.min(0, mx);
+      setSwipe({ id, dx });
+    };
+    const up = () => {
+      cleanup();
+      setSwipe(null);
+      if (on && dx < -SWIPE_DEL) {
+        navigator.vibrate?.(20);
+        p.onRemove(id);
+      }
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancelSwipe);
+    };
+    const cancelSwipe = () => {
+      cleanup();
+      setSwipe(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancelSwipe);
+  };
+
+  const fr = (id: string) => (p.focusReq?.id === id ? { focusKey: p.focusReq.n, caret: p.focusReq.caret } : {});
+  const insLine = <div className="ins" aria-hidden="true">ここに入る</div>;
+  const bodyText = (it: Item) => (it.t === 'line' ? `${member(p.cast, it.w)?.name ?? ''}「${it.x}」` : it.t === 'act' ? `（${it.x}）` : '');
 
   /** 長押しで掴んで別の行へ。短く離せばミニ操作盤 */
   const chipDown = (id: string, text: string) => (e: React.PointerEvent) => {
@@ -54,10 +150,6 @@ export const ScriptView = memo(function ScriptView(p: Props) {
       setDrag(cur);
       navigator.vibrate?.(15);
     }, 350);
-    const rowAt = (x: number, y: number) => {
-      const el = document.elementFromPoint(x, y)?.closest('[data-row]') as HTMLElement | null;
-      return el ? el.dataset.row ?? '' : null;
-    };
     const move = (ev: PointerEvent) => {
       if (!grabbed) {
         if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) cleanup();
@@ -92,18 +184,33 @@ export const ScriptView = memo(function ScriptView(p: Props) {
 
   return (
     <div className={`script${drag ? ' dragging' : ''}`}>
-      {rows.length === 0 && <div className="empty">舞台を触るか、下の欄に打つ</div>}
+      {rows.length === 0 && (
+        <div className="empty">
+          <p>下の欄に打つと、ここに台本ができる</p>
+          {p.template && p.onTemplate && (
+            <button className="tmpl" onClick={p.onTemplate}>
+              {p.template}のひな形を入れる
+              <small>{p.template === 'コント' ? '板付き・明転…暗転' : '出囃子・つかみ…締め・ハケ'}</small>
+            </button>
+          )}
+        </div>
+      )}
+      {p.cursor < 0 && rows.length > 0 && insLine}
       {rows.map((row, ri) => {
         const body = row.body != null ? p.items[row.body] : null;
         const bodyId = body?.id ?? '';
         const here = (row.body != null && p.cursor === row.body) || row.chips.includes(p.cursor);
         const open = row.chips.map((i) => p.items[i]).find((it) => it.id === p.openChip);
+        const sw = swipe && swipe.id === bodyId ? swipe.dx : 0;
+        const lastChip = row.chips[row.chips.length - 1];
         return (
           <div
             key={bodyId || `tail${ri}`}
             data-row={bodyId}
             ref={here ? sel : undefined}
-            className={`row${here ? ' here' : ''}${drag && drag.over === bodyId ? ' drop' : ''}`}
+            className={`row${here ? ' here' : ''}${drag && drag.over === bodyId && drag.id !== bodyId ? ' drop' : ''}${drag?.row && drag.id === bodyId ? ' lifted' : ''}${sw ? ' swiping' : ''}${sw < -SWIPE_DEL ? ' armed' : ''}`}
+            style={sw ? ({ '--sw': `${sw}px` } as React.CSSProperties) : undefined}
+            onPointerDown={rowDown(bodyId)}
           >
             {row.chips.length > 0 && (
               <div className="chips">
@@ -121,8 +228,10 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                     </button>
                   );
                 })}
+                {row.chips.includes(p.cursor) && p.cursor !== lastChip && <span className="ins-inline" aria-hidden="true">▸</span>}
               </div>
             )}
+            {lastChip != null && p.cursor === lastChip && insLine}
             {open && (
               <ChipPanel
                 key={open.id}
@@ -146,6 +255,9 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                     onSpeaker={() => p.onEdit(body.id, { w: cycle(lineRoles.map((c) => c.id), body.w) })}
                     onEdit={(patch) => p.onEdit(body.id, patch)}
                     onFocus={() => p.onCursor(row.body!)}
+                    onSplit={(at) => p.onSplit(body.id, at)}
+                    onMergePrev={() => p.onMergePrev(body.id)}
+                    focus={fr(body.id)}
                   />
                 ) : body.t === 'act' ? (
                   <>
@@ -161,10 +273,23 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                       {member(p.cast, body.w)?.name ?? '・'}
                     </button>
                     {body.w && <span className="paren">、</span>}
-                    <AutoText value={body.x} onChange={(x) => p.onEdit(body.id, { x })} onFocus={() => p.onCursor(row.body!)} placeholder="動き" />
+                    <AutoText
+                      value={body.x}
+                      onChange={(x) => p.onEdit(body.id, { x })}
+                      onFocus={() => p.onCursor(row.body!)}
+                      placeholder="動き"
+                      onSplit={(at) => p.onSplit(body.id, at)}
+                      onMergePrev={() => p.onMergePrev(body.id)}
+                      {...fr(body.id)}
+                    />
                     <span className="paren">）</span>
                   </>
                 ) : null}
+                {p.cursor === row.body && (
+                  <button className="grip" aria-label="掴んで並べ替える" onPointerDown={handleDown(body.id, bodyText(body))}>
+                    ⠿
+                  </button>
+                )}
                 {p.cursor === row.body && (
                   <button
                     className="del"
@@ -179,6 +304,7 @@ export const ScriptView = memo(function ScriptView(p: Props) {
                 )}
               </div>
             )}
+            {body && p.cursor === row.body && insLine}
           </div>
         );
       })}
@@ -197,6 +323,9 @@ function LineBody(p: {
   onSpeaker: () => void;
   onEdit: (patch: Partial<Item>) => void;
   onFocus: () => void;
+  onSplit: (at: number) => void;
+  onMergePrev: () => void;
+  focus: { focusKey?: number; caret?: number };
 }) {
   const m = member(p.cast, p.it.w);
   const prop = m?.kind === 'prop';
@@ -213,7 +342,15 @@ function LineBody(p: {
         {m?.name ?? '？'}
       </button>
       <span className="quote">{prop ? '『' : '「'}</span>
-      <AutoText value={p.it.x} onChange={(x) => p.onEdit({ x })} onFocus={p.onFocus} placeholder="セリフ" />
+      <AutoText
+        value={p.it.x}
+        onChange={(x) => p.onEdit({ x })}
+        onFocus={p.onFocus}
+        placeholder="セリフ"
+        onSplit={p.onSplit}
+        onMergePrev={p.onMergePrev}
+        {...p.focus}
+      />
       <span className="quote">{prop ? '』' : '」'}</span>
       <span className={`note${p.it.n ? '' : ' blank'}`}>
         <span className="paren">（</span>

@@ -82,7 +82,7 @@
 }
 
 .stage-app.app {
-  height: 100dvh;
+  height: var(--app-h, 100dvh);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
@@ -675,9 +675,11 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 .inputbar {
+  padding: 4px 8px 2px;
+}
+.inputbar .typing {
   display: flex;
   gap: 5px;
-  padding: 6px 8px 2px;
   align-items: center;
 }
 .inputbar .face {
@@ -1510,4 +1512,207 @@
   .info-cast .cs {
     grid-column: 2 / 4;
   }
+}
+
+/* ==== スマホで速く書く ==== */
+
+/* 話者：キーボードのすぐ上に全員並べて1タップで選ぶ */
+.inputbar .roles {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0 6px;
+  -webkit-overflow-scrolling: touch;
+}
+.inputbar .roles::-webkit-scrollbar {
+  display: none;
+}
+.rolechip {
+  flex: none;
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--c, var(--line));
+  color: var(--c, var(--ink));
+  font-weight: 700;
+  font-size: 14px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.stage-app .rolechip.on {
+  background: var(--c, var(--ink));
+  color: #fff;
+}
+.rolechip.prop {
+  border-style: dashed;
+}
+.stage-app .rolechip.add {
+  border: 1.5px dashed var(--line);
+  color: var(--sub);
+  font-weight: 400;
+  min-width: 40px;
+}
+.inputbar .kind {
+  min-height: 40px;
+}
+.inputbar input {
+  min-height: 40px;
+}
+.inputbar .send,
+.inputbar .ma,
+.inputbar .se {
+  min-height: 40px;
+  min-width: 40px;
+}
+.stage-app .inputbar .send {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+  font-weight: 700;
+}
+/* 指で打っている間は時間軸をしまって、台本を広く見せる */
+@media (pointer: coarse) {
+  .stage-app footer:focus-within .timebar {
+    display: none;
+  }
+}
+
+/* 上の段：見るものの切り替え＋保存した時刻 */
+.sheetbar {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.sheetbar .sheet {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+.mode-write .sheetbar .sheet {
+  justify-content: flex-start;
+}
+.saved {
+  flex: none;
+  font-size: 11px;
+  color: var(--sub);
+  padding: 0 10px 0 4px;
+  white-space: nowrap;
+}
+
+/* 次に打った行が入るところ */
+.ins {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: var(--light);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.ins::before,
+.ins::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--light);
+  border-radius: 1px;
+}
+.ins::before {
+  flex: 0 0 10px;
+}
+.ins-inline {
+  color: var(--light);
+  font-weight: 700;
+  font-size: 12px;
+  align-self: center;
+}
+.mode-write .right {
+  position: relative;
+}
+.stage-app .toend {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  background: var(--panel);
+  box-shadow: 0 4px 14px #0002;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+/* 行：つまみで並べ替え、左へ払って消す */
+.row {
+  touch-action: pan-y;
+  position: relative;
+}
+.row.swiping {
+  transform: translateX(var(--sw));
+  opacity: 0.85;
+}
+.row.armed {
+  background: #d0453a22;
+  box-shadow: inset -4px 0 0 #d0453a;
+}
+.row.lifted {
+  opacity: 0.35;
+}
+.stage-app .grip {
+  position: absolute;
+  right: 26px;
+  top: 0;
+  border: 0;
+  padding: 2px 6px;
+  color: var(--sub);
+  touch-action: none;
+  cursor: grab;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.body {
+  padding-right: 52px;
+}
+
+/* 空の台本 */
+.script .empty p {
+  margin: 0 0 14px;
+}
+.stage-app .tmpl {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.tmpl small {
+  font-weight: 400;
+  color: var(--sub);
+  font-size: 11px;
+}
+
+/* わたす：画面の明るさ */
+.prefs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--sub);
+}
+.stage-app .handoff .share {
+  margin-left: 0;
+}
+
+.stage-loading {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  color: var(--sub);
+  font-size: 13px;
 }

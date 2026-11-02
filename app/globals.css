@@ -3,7 +3,30 @@
 @tailwind utilities;
 
 :root {
+  --s-50: 29 27 25; --s-100: 29 27 25; --s-200: 45 42 39; --s-300: 70 66 62; --s-400: 109 104 98;
+  --s-500: 128 122 115; --s-600: 160 154 146; --s-700: 205 199 190; --s-750: 214 209 201; --s-800: 226 221 212;
+  --s-850: 233 229 222; --s-900: 246 244 239; --s-950: 255 255 255;
+  --a-200: 150 72 22; --a-300: 168 82 30; --a-400: 176 90 34; --a-500: 184 90 31; --a-600: 184 90 31; --a-700: 160 76 24;
+  --a-950: 255 232 205;
   color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+  --s-50: 236 235 232; --s-100: 236 235 232; --s-200: 222 219 214; --s-300: 201 197 191; --s-400: 154 150 143;
+  --s-500: 125 121 115; --s-600: 95 92 88; --s-700: 72 69 76; --s-750: 62 60 66; --s-800: 52 50 58;
+  --s-850: 42 41 46; --s-900: 20 19 22; --s-950: 29 28 32;
+  --a-200: 245 190 140; --a-300: 240 170 110; --a-400: 232 150 88; --a-500: 196 100 40; --a-600: 184 90 31; --a-700: 160 76 24;
+  --a-950: 70 40 20;
+  color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --s-50: 236 235 232; --s-100: 236 235 232; --s-200: 222 219 214; --s-300: 201 197 191; --s-400: 154 150 143;
+  --s-500: 125 121 115; --s-600: 95 92 88; --s-700: 72 69 76; --s-750: 62 60 66; --s-800: 52 50 58;
+  --s-850: 42 41 46; --s-900: 20 19 22; --s-950: 29 28 32;
+  --a-200: 245 190 140; --a-300: 240 170 110; --a-400: 232 150 88; --a-500: 196 100 40; --a-600: 184 90 31; --a-700: 160 76 24;
+  --a-950: 70 40 20;
+  color-scheme: dark;
 }
 
 html, body {
@@ -14,8 +37,8 @@ html, body {
 
 body {
   font-family: 'Inter', 'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #0f172a; /* Slate 900 for dark mode background */
-  color: #f8fafc; /* Slate 50 for text */
+  background: rgb(var(--s-900));
+  color: rgb(var(--s-50));
 }
 
 button, input, textarea, select {
@@ -28,16 +51,16 @@ button, input, textarea, select {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: rgb(var(--s-850));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: rgb(var(--s-600));
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: rgb(var(--s-500));
 }
 
 textarea {

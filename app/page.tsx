@@ -8,6 +8,8 @@ import { castFromCharacters, charactersFromImport, soundsFromImport } from '../l
 import { parseScriptText, type ImportResult } from '../lib/stage/importText';
 import { readScriptFile, SCRIPT_FILE_ACCEPT } from '../lib/stage/scriptFile';
 import type { Item as StageItem } from '../lib/stage/types';
+import { quickScript } from '../lib/quick';
+import { listSnapshots, snapshot, type Snapshot } from '../lib/backup';
 
 type ViewMode = 'home' | 'unitSetup' | 'performerSetup' | 'scriptSetup';
 
@@ -82,6 +84,8 @@ export default function HomePage() {
   const [importNote, setImportNote] = useState('');
 
   const [status, setStatus] = useState('準備完了');
+  /** 自動の控え（IndexedDB）。開いたときだけ読む */
+  const [snaps, setSnaps] = useState<Snapshot[] | null>(null);
 
   // Memos
   const selectedUnit = useMemo(() => units.find((u) => u.id === selectedUnitId) ?? null, [units, selectedUnitId]);
@@ -92,9 +96,26 @@ export default function HomePage() {
     return scripts.filter((s) => s.unitId === selectedUnitId);
   }, [scripts, selectedUnitId]);
 
+  /** 最近さわった台本（ユニットをまたいで） */
+  const recent = useMemo(
+    () => [...scripts].sort((a, b) => (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? '')).slice(0, 5),
+    [scripts],
+  );
+
   // Load Data
   useEffect(() => {
     loadData();
+    // 舞台で選んだ画面の明るさを、ここでも使う
+    try {
+      const t = localStorage.getItem('stage:theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch {
+      /* noop */
+    }
+    // ホーム画面のショートカット（/?quick=漫才）から来たら、そのまま書き始める
+    const q = new URLSearchParams(window.location.search).get('quick');
+    if (q && netaTypes.includes(q as NetaType)) void quickWrite(q as NetaType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Save changes to local storage
@@ -207,6 +228,48 @@ export default function HomePage() {
       console.error(error);
       setStatus('ローカル保存モード (クラウド同期エラー)');
     }
+  }
+
+  /** すぐ書く：ユニットも題も決めずに1本作って「かく」を開く */
+  async function quickWrite(genre: NetaType) {
+    const r = quickScript(loadLocalUnits(), genre, selectedUnitId);
+    const local = loadLocalScripts();
+    saveLocalUnits(r.units);
+    saveLocalScripts([...local, r.script]);
+    if (supabase) {
+      try {
+        await supabase.from('units').upsert({ id: r.unit.id, name: r.unit.name, university: r.unit.university ?? null });
+        await supabase.from('scripts').insert({ id: r.script.id, unit_id: r.unit.id, title: '', neta_type: genre, blocks: [] });
+        await supabase.from('characters').insert(r.script.characters.map((c) => ({ id: c.id, script_id: r.script.id, name: c.name, performer_id: c.performerId || null })));
+      } catch (e) {
+        // 手元には保存済み。クラウドは次に開いたとき送り直す
+        console.error(e);
+      }
+    }
+    window.location.href = `/stage?id=${r.script.id}&mode=write`;
+  }
+
+  async function openSnapshots() {
+    setSnaps(snaps ? null : await listSnapshots());
+  }
+
+  function restoreSnapshot(snap: Snapshot) {
+    const at = new Date(snap.at).toLocaleString('ja-JP');
+    if (!confirm(`「${snap.title || '無題'}」を ${at} の控えに戻しますか？（今の中身は控えに残ります）`)) return;
+    const local = loadLocalScripts();
+    const now = local.find((x) => x.id === snap.scriptId);
+    // 今の中身も控えに残してから戻す
+    if (now) void snapshot(now, true);
+    const next = now ? local.map((x) => (x.id === snap.scriptId ? snap.script : x)) : [...local, snap.script];
+    saveLocalScripts(next);
+    setScripts(next);
+    if (!units.some((u) => u.id === snap.script.unitId)) {
+      const nu = [...units, { id: snap.script.unitId, name: 'マイネタ', performers: [] }];
+      setUnits(nu);
+      saveLocalUnits(nu);
+    }
+    setSnaps(null);
+    setStatus(`${snap.title || '無題'} を ${at} の控えに戻しました`);
   }
 
   // Backup handlers
@@ -442,8 +505,8 @@ export default function HomePage() {
       setScripts(nextScripts);
       saveLocalScripts(nextScripts);
       setStatus('台本を作成しました');
-      // 作ったらそのまま舞台でつくる
-      window.location.href = `/stage?id=${scriptId}&mode=make`;
+      // 作ったらそのまま「かく」で書き始める
+      window.location.href = `/stage?id=${scriptId}&mode=write`;
     } catch (error) {
       setStatus('作成に失敗しました');
       console.error(error);
@@ -475,21 +538,21 @@ export default function HomePage() {
       <main className="screen-only min-h-screen bg-slate-900 text-slate-100 flex flex-col transition-all duration-300">
 
         {/* Header */}
-        <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-6 py-4 sticky top-0 z-40 flex items-center justify-between">
+        <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 sticky top-0 z-40 flex items-center justify-between gap-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-tr from-violet-600 to-indigo-500 w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/10">
               <span className="font-black text-xl text-white">台</span>
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-violet-200 to-slate-200 bg-clip-text text-transparent">
-                芸人向け台本制作エディタ <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-normal">MVP v1.0</span>
+              <h1 className="text-base sm:text-xl font-bold tracking-tight text-slate-100 whitespace-nowrap">
+                台本制作エディタ <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-normal">MVP v1.0</span>
               </h1>
-              <p className="text-xs text-slate-400">大学お笑い・学生芸人・NOROSHIに最適化されたスマート台本ツール</p>
+              <p className="hidden sm:block text-xs text-slate-400">大学お笑い・学生芸人・NOROSHIに最適化されたスマート台本ツール</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="text-xs px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+          <div className="flex items-center gap-4 min-w-0">
+            <span className="text-[11px] sm:text-xs px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 max-w-[40vw] truncate min-w-0" title={status}>
               {status}
             </span>
           </div>
@@ -497,17 +560,54 @@ export default function HomePage() {
 
         {/* Home View */}
         {view === 'home' && (
-          <div className="max-w-7xl mx-auto w-full px-6 py-8 flex-1 flex flex-col justify-start">
-            <div className="flex items-center justify-between mb-8">
+          <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 flex-1 flex flex-col justify-start">
+            {/* すぐ書く：ユニットも題も後で */}
+            <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-950 p-4 sm:p-5">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="text-lg font-bold text-slate-100">すぐ書く</h2>
+                <span className="text-[11px] text-slate-400 truncate">題・ユニット・役名はあとで</span>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {netaTypes.map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => quickWrite(g)}
+                    className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 text-sm transition"
+                  >
+                    ＋ {g}
+                  </button>
+                ))}
+              </div>
+              {recent.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-xs font-semibold text-slate-400 mb-1.5">つづきを書く</h3>
+                  <ul className="divide-y divide-slate-800">
+                    {recent.map((s) => (
+                      <li key={s.id}>
+                        <a href={`/stage?id=${s.id}&mode=write`} className="flex items-center gap-2 py-2.5 text-sm">
+                          <span className="font-semibold text-slate-200 truncate">{s.title || '無題'}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0">{s.netaType}</span>
+                          <span className="ml-auto text-[11px] text-slate-500 shrink-0">
+                            {(s.updatedAt ?? s.createdAt) ? new Date(s.updatedAt ?? s.createdAt ?? '').toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                          </span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+
+            <div className="flex items-center justify-between gap-3 mb-6 sm:mb-8">
               <div>
                 <h2 className="text-2xl font-bold text-slate-100">マイユニット</h2>
-                <p className="text-sm text-slate-400">お笑いユニット（コンビ・トリオ・ピン）を選択して台本を作成・管理します。</p>
+                <p className="text-xs sm:text-sm text-slate-400">コンビ・トリオ・ピンごとに台本と演者をまとめる</p>
               </div>
               <button
                 onClick={startUnitSetup}
-                className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium px-5 py-2.5 rounded-xl shadow-lg shadow-violet-500/10 transition duration-150 text-sm"
+                className="shrink-0 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium px-4 sm:px-5 py-2.5 rounded-xl shadow-lg shadow-violet-500/10 transition duration-150 text-sm"
               >
-                新規ユニット作成
+                ＋ ユニット
               </button>
             </div>
 
@@ -619,13 +719,10 @@ export default function HomePage() {
                           key={s.id}
                           className="bg-slate-900/60 border border-slate-850 hover:border-slate-700 rounded-xl p-4 flex items-center justify-between transition group"
                         >
-                          <a href={`/stage?id=${s.id}&mode=make`} className="cursor-pointer flex-1 block">
+                          <a href={`/stage?id=${s.id}&mode=write`} className="cursor-pointer flex-1 block min-w-0">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-slate-200 group-hover:text-violet-300 transition">{s.title}</h4>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${s.netaType === '漫才' ? 'bg-orange-950/60 text-orange-400 border border-orange-900/40' :
-                                  s.netaType === 'コント' ? 'bg-cyan-950/60 text-cyan-400 border border-cyan-900/40' :
-                                    'bg-purple-950/60 text-purple-400 border border-purple-900/40'
-                                }`}>
+                              <h4 className="font-bold text-slate-200 group-hover:text-violet-300 transition truncate">{s.title || '無題'}</h4>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-750 shrink-0">
                                 {s.netaType}
                               </span>
                             </div>
@@ -637,7 +734,7 @@ export default function HomePage() {
                           <div className="flex items-center gap-2">
                             <a
                               href={`/stage?id=${s.id}&mode=make`}
-                              className="text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 font-medium px-3 py-1.5 rounded-lg border border-amber-900/50 transition"
+                              className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-3 py-1.5 rounded-lg border border-slate-750 transition"
                               title="人形劇をいじって台本をつくる"
                             >
                               つくる
@@ -676,8 +773,11 @@ export default function HomePage() {
 
             {/* Global backup utilities in footer */}
             <div className="mt-auto pt-8 border-t border-slate-800 flex items-center justify-between text-xs text-slate-500 gap-4 flex-wrap">
-              <span>大学お笑い台本ツール (Offline-ready with LocalStorage)</span>
-              <div className="flex items-center gap-3">
+              <span>台本はこの端末に保存（圏外でも使える）。1分ごとに別の場所にも控えをとっています</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button onClick={openSnapshots} className="text-slate-400 hover:text-slate-200 transition underline">
+                  自動の控えから戻す
+                </button>
                 <button
                   onClick={handleBackupExport}
                   className="text-slate-400 hover:text-slate-200 transition underline flex items-center gap-1"
@@ -694,6 +794,26 @@ export default function HomePage() {
                   />
                 </label>
               </div>
+              {snaps && (
+                <div className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3">
+                  {snaps.length === 0 ? (
+                    <p className="text-slate-400">控えはまだありません（台本を書くと1分ごとにとります）</p>
+                  ) : (
+                    <ul className="divide-y divide-slate-800 max-h-72 overflow-y-auto">
+                      {snaps.map((sn) => (
+                        <li key={sn.key} className="flex items-center gap-2 py-2">
+                          <span className="font-semibold text-slate-200 truncate">{sn.title || '無題'}</span>
+                          <span className="text-slate-500 shrink-0">セリフ {sn.lines} 行</span>
+                          <span className="ml-auto text-slate-500 shrink-0">{new Date(sn.at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                          <button onClick={() => restoreSnapshot(sn)} className="shrink-0 rounded-lg border border-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-800">
+                            戻す
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
