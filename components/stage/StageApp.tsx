@@ -48,26 +48,32 @@ const modeFromUrl = (): Mode => {
 type Theme = 'auto' | 'light' | 'dark';
 
 /**
- * スマホのキーボードが出たら、見えている高さに画面を合わせる（入力欄がキーボードの下に隠れないように）。
- * iOS Safari は 100dvh がキーボードで縮まないので visualViewport で測る
+ * スマホのキーボードが出たら、見えている範囲（visualViewport）に画面をぴったり合わせる。
+ * iOS Safari はキーボードで 100dvh が縮まず、しかもページ全体を上へずらすので、
+ * 画面を position: fixed にして、見えている範囲の上端（offsetTop）と高さに合わせる
  */
 function useVisualViewportHeight() {
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
     const el = document.documentElement;
+    let raf = 0;
     const f = () => {
-      el.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
-      // キーボードで押し上げられた分を戻す
-      if (vv.offsetTop) window.scrollTo(0, 0);
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        el.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
+        el.style.setProperty('--app-top', `${Math.max(0, Math.round(vv.offsetTop))}px`);
+      });
     };
     f();
     vv.addEventListener('resize', f);
     vv.addEventListener('scroll', f);
     return () => {
+      cancelAnimationFrame(raf);
       vv.removeEventListener('resize', f);
       vv.removeEventListener('scroll', f);
       el.style.removeProperty('--app-h');
+      el.style.removeProperty('--app-top');
     };
   }, []);
 }
