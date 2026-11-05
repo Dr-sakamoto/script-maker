@@ -82,6 +82,12 @@
 }
 
 .stage-app.app {
+  /* キーボードが出ても入力欄が見えるよう、見えている範囲に合わせる（StageApp の useVisualViewportHeight） */
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--app-top, 0px);
+  min-height: 0;
   height: var(--app-h, 100dvh);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
