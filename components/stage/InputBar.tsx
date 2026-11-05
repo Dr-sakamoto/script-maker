@@ -16,7 +16,28 @@ type Props = {
   /** 役チップの長押し：名前を変える */
   onRename: (r: Role, name: string) => void;
   autoFocus?: boolean;
+  /** 打ちかけの文字をこの名前で端末にとっておく（モードを切り替えても、開き直しても残る） */
+  draftKey?: string;
 };
+
+const draftName = (k: string) => `stage:draft:${k}`;
+function readDraft(k?: string): string {
+  if (!k) return '';
+  try {
+    return localStorage.getItem(draftName(k)) ?? '';
+  } catch {
+    return '';
+  }
+}
+function writeDraft(k: string | undefined, v: string) {
+  if (!k) return;
+  try {
+    if (v) localStorage.setItem(draftName(k), v);
+    else localStorage.removeItem(draftName(k));
+  } catch {
+    /* noop */
+  }
+}
 
 /** 指で触る端末か（キーボードの近道の案内を出し分ける） */
 function useCoarse() {
@@ -26,7 +47,11 @@ function useCoarse() {
 }
 
 export function InputBar(p: Props) {
-  const [text, setText] = useState('');
+  const [text, setTextRaw] = useState(() => readDraft(p.draftKey));
+  const setText = (v: string) => {
+    setTextRaw(v);
+    writeDraft(p.draftKey, v);
+  };
   const coarse = useCoarse();
   const input = useRef<HTMLInputElement>(null);
   const m = member(p.cast, p.role);
