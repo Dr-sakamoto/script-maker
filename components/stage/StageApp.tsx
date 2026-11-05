@@ -149,25 +149,33 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
 
   // --- ネタ管理へ書き戻す（最新の一覧に混ぜるので、ほかの台本は消さない）。繋がっていればクラウドにも送る
   const first = useRef(true);
+  /** まだ端末に書いていない変更があるか */
+  const dirty = useRef(false);
+  const saveNow = useCallback(() => {
+    if (!dirty.current) return;
+    dirty.current = false;
+    const { doc } = ref.current;
+    const all = loadLocalScripts();
+    const next = all.map((s) => (s.id === script.id ? scriptWithDoc(s, doc) : s));
+    try {
+      saveLocalScripts(next);
+      setSavedAt(Date.now());
+    } catch (err) {
+      console.error(err);
+      dirty.current = true;
+      setSavedAt(null);
+    }
+    // 端末の別の場所（IndexedDB）にも版をとっておく（1分に1回）
+    const mine = next.find((s) => s.id === script.id);
+    if (mine) void snapshot(mine);
+  }, [script.id]);
   useEffect(() => {
     if (first.current) {
       first.current = false;
       return;
     }
-    const t = setTimeout(() => {
-      const all = loadLocalScripts();
-      const next = all.map((s) => (s.id === script.id ? scriptWithDoc(s, doc) : s));
-      try {
-        saveLocalScripts(next);
-        setSavedAt(Date.now());
-      } catch (err) {
-        console.error(err);
-        setSavedAt(null);
-      }
-      // 端末の別の場所（IndexedDB）にも版をとっておく（1分に1回）
-      const mine = next.find((s) => s.id === script.id);
-      if (mine) void snapshot(mine);
-    }, 300);
+    dirty.current = true;
+    const t = setTimeout(saveNow, 300);
     const c = setTimeout(() => {
       const mine = loadLocalScripts().find((s) => s.id === script.id);
       if (mine) void pushScript(mine);
@@ -176,7 +184,23 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       clearTimeout(t);
       clearTimeout(c);
     };
-  }, [doc, script.id]);
+  }, [doc, script.id, saveNow]);
+  // 閉じる・別のアプリへ移る・画面を離れるときは、待たずにすぐ書く（打った直後の分を落とさない）
+  useEffect(() => {
+    const flush = () => saveNow();
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') saveNow();
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', onVis);
+      saveNow();
+    };
+  }, [saveNow]);
 
   // --- テーマ
   useEffect(() => {
@@ -722,6 +746,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
             onSE={onSE}
             onAddRole={(name) => setRole(onAddPuppet(name))}
             onRename={(r, name) => onCast(r, { name })}
+            draftKey={script.id}
             autoFocus
           />
         )}
