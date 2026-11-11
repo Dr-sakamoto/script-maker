@@ -18,6 +18,8 @@ type Props = {
   autoFocus?: boolean;
   /** 打ちかけの文字をこの名前で端末にとっておく（モードを切り替えても、開き直しても残る） */
   draftKey?: string;
+  /** まとめ書き（大きな欄に一気に打つ）へ切り替える */
+  onBatch?: () => void;
 };
 
 const draftName = (k: string) => `stage:draft:${k}`;
@@ -124,6 +126,11 @@ export function InputBar(p: Props) {
         >
           ＋
         </button>
+        {p.onBatch && (
+          <button className="rolechip batch" onPointerDown={keep} onClick={p.onBatch} title="大きな欄に一気に打って、あとから行に分ける">
+            ≡ まとめ書き
+          </button>
+        )}
       </div>
       <div className="typing">
         <button
