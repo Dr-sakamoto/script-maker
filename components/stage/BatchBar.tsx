@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { member } from '../../lib/stage/cast';
-import { parseQuick, type QuickContext } from '../../lib/stage/quickText';
+import { fixQuick, parseQuick, type QuickContext, type QuickFix } from '../../lib/stage/quickText';
 import { initialState } from '../../lib/stage/state';
 import type { CastMember, Item } from '../../lib/stage/types';
 import { chipLook } from './chips';
@@ -36,7 +36,7 @@ function writeDraft(k: string | undefined, v: string) {
   }
 }
 
-/** まとめ書き：大きな欄に一気に打って、あとから行に分ける。分かれ方はその場で下に出す */
+/** まとめ書き：大きな欄に一気に打って、あとから行に分ける。分かれ方はその場で下に出し、外れたところは押して直す */
 export function BatchBar(p: Props) {
   const [text, setTextRaw] = useState(() => readDraft(p.draftKey));
   const setText = (v: string) => {
@@ -45,6 +45,7 @@ export function BatchBar(p: Props) {
   };
   const area = useRef<HTMLTextAreaElement>(null);
   const prev = useRef<HTMLOListElement>(null);
+  const fixed = useRef(false);
   const r = useMemo(() => parseQuick(text, p.cast, p.ctx), [text, p.cast, p.ctx]);
   const init = useMemo(() => initialState(r.cast), [r.cast]);
   const speaking = p.cast.filter((c) => c.kind !== 'set');
@@ -57,9 +58,22 @@ export function BatchBar(p: Props) {
       el.style.height = 'auto';
       el.style.height = `${el.scrollHeight + 2}px`;
     }
+    // 打っているときは最後の行を見せる。直したときは、直した行から動かさない
     const pv = prev.current;
-    if (pv) pv.scrollTop = pv.scrollHeight;
+    if (pv && !fixed.current) pv.scrollTop = pv.scrollHeight;
+    fixed.current = false;
   }, [text]);
+
+  /** 割り振りを直す：文章のほうを書き換える（直した結果も文章に残る） */
+  const fix = (i: number, f: QuickFix) => {
+    const t = fixQuick(text, p.cast, p.ctx, i, f);
+    if (t == null) return;
+    fixed.current = true;
+    setText(t);
+  };
+  /** 押してもキーボードを閉じない */
+  const keep = (e: React.PointerEvent) => e.preventDefault();
+  const canSwap = speaking.length > 1;
 
   const send = () => {
     if (!r.items.length) return;
@@ -95,7 +109,7 @@ export function BatchBar(p: Props) {
           autoFocus
           rows={4}
           spellCheck={false}
-          placeholder={'ネタを続けて打つ。改行するたびに話者が交代\n　行頭に空白＝同じ人が続けて話す\n（ト書き　、、＝間　暗転　SE：拍手\n1 セリフ＝番号の役が話す'}
+          placeholder={'ネタを続けて打つ。雑でいい\n改行か空白で話者が交代。外れたら下の名前を押して直す\n（ト書き　、、＝間　暗転　SE：拍手\n1 セリフ＝番号の役が話す'}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -106,24 +120,47 @@ export function BatchBar(p: Props) {
         />
         {r.items.length > 0 && (
           <ol className="bprev" ref={prev} aria-label="台本に入る形">
-            {r.items.map((it) => {
+            {r.items.map((it, i) => {
+              const before = r.items[i - 1];
+              const join = (before?.t === 'line' || before?.t === 'act') && (
+                <button className="fx" onPointerDown={keep} onClick={() => fix(i, 'join')} title="前の行につなぐ" aria-label="前の行につなぐ">
+                  ⤴
+                </button>
+              );
               if (it.t === 'line') {
                 const m = member(r.cast, it.w);
                 return (
                   <li key={it.id} className="l">
-                    <b style={{ color: m?.color }}>
+                    <button
+                      className="who"
+                      style={{ color: m?.color }}
+                      disabled={!canSwap}
+                      onPointerDown={keep}
+                      onClick={() => fix(i, 'speaker')}
+                      title="押すと話者が替わる"
+                    >
                       {m?.name ?? '?'}
                       {r.added.includes(it.w) ? '（新しい役）' : ''}
-                    </b>
-                    <span>{it.x}</span>
+                    </button>
+                    <span className="x">{it.x}</span>
+                    <button className="fx" onPointerDown={keep} onClick={() => fix(i, 'kind')} title="動き（ト書き）にする" aria-label="動きにする">
+                      （）
+                    </button>
+                    {join}
                   </li>
                 );
               }
               if (it.t === 'act')
                 return (
                   <li key={it.id} className="a">
-                    （{it.w ? `${member(r.cast, it.w)?.name ?? ''}、` : ''}
-                    {it.x}）
+                    <span className="x">
+                      （{it.w ? `${member(r.cast, it.w)?.name ?? ''}、` : ''}
+                      {it.x}）
+                    </span>
+                    <button className="fx" onPointerDown={keep} onClick={() => fix(i, 'kind')} title="セリフにする" aria-label="セリフにする">
+                      「」
+                    </button>
+                    {join}
                   </li>
                 );
               return (

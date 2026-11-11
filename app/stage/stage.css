@@ -799,19 +799,45 @@
 }
 .batchbar .bprev li {
   display: flex;
-  gap: 8px;
-  align-items: baseline;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
 }
-.batchbar .bprev .l b {
-  flex: none;
-}
-.batchbar .bprev .l span {
+.batchbar .bprev .x {
+  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.batchbar .bprev .a {
+.batchbar .bprev .a .x {
   color: var(--sub);
-  overflow-wrap: anywhere;
+}
+/* 押して直す：名前＝話者を替える、（）／「」＝動き ⇔ セリフ、⤴＝前につなぐ */
+.stage-app .batchbar .bprev .who {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 2px 6px 2px 0;
+  min-height: 28px;
+  font-weight: 700;
+  font-size: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.stage-app .batchbar .bprev .who:disabled {
+  text-decoration: none;
+  opacity: 1;
+}
+.stage-app .batchbar .bprev .fx {
+  flex: none;
+  min-width: 34px;
+  min-height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: var(--sub);
+  font-size: 12px;
+  line-height: 1;
 }
 .batchbar .bprev .c span {
   border: 1px solid var(--line);
