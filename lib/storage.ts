@@ -17,9 +17,16 @@ export function loadLocalUnits(): Unit[] {
   }
 }
 
-export function saveLocalUnits(units: Unit[]): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.UNITS, JSON.stringify(units));
+/** 保存できたら true。容量がいっぱい・保存が禁止されているときは false（例外は投げない） */
+export function saveLocalUnits(units: Unit[]): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    localStorage.setItem(STORAGE_KEYS.UNITS, JSON.stringify(units));
+    return true;
+  } catch (e) {
+    console.error('Failed to save local units', e);
+    return false;
+  }
 }
 
 export function loadLocalScripts(): ScriptItem[] {
@@ -34,9 +41,16 @@ export function loadLocalScripts(): ScriptItem[] {
   }
 }
 
-export function saveLocalScripts(scripts: ScriptItem[]): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.SCRIPTS, JSON.stringify(scripts));
+/** 保存できたら true。容量がいっぱい・保存が禁止されているときは false（例外は投げない） */
+export function saveLocalScripts(scripts: ScriptItem[]): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    localStorage.setItem(STORAGE_KEYS.SCRIPTS, JSON.stringify(scripts));
+    return true;
+  } catch (e) {
+    console.error('Failed to save local scripts', e);
+    return false;
+  }
 }
 
 export function exportBackup(units: Unit[], scripts: ScriptItem[]): void {

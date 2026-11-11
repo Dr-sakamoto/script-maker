@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { askPersist, snapshot } from '../../lib/backup';
 import { QUICK_UNIT_NAME } from '../../lib/quick';
 import { pushScript } from '../../lib/cloud';
+import { supabase } from '../../lib/supabaseClient';
 import { loadLocalScripts, saveLocalScripts } from '../../lib/storage';
 import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
@@ -100,6 +101,9 @@ const readTheme = (): Theme => {
   }
 };
 
+/** クラウドに繋ぐ設定があるか（無ければローカル保存だけ） */
+const cloudOn = !!supabase;
+
 /** 舞台エディタ。台本・役・音源はネタ管理（localStorage の units / scripts）のものを使い、そこへ書き戻す */
 export default function StageApp({ script, unit }: { script: ScriptItem; unit?: Unit }) {
   const [h, dispatch] = useReducer(histReducer, undefined, () => initHist(docFromScript(script, unit)));
@@ -133,6 +137,10 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   useVisualViewportHeight();
   /** 最後に端末へ保存した時刻 */
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  /** 端末への保存に失敗している（容量がいっぱいなど） */
+  const [saveFailed, setSaveFailed] = useState(false);
+  /** クラウドへ送れなかった（圏外など）。手元には残っていて、次に一覧を開いたとき送り直す */
+  const [cloudFailed, setCloudFailed] = useState(false);
   /** 分けた・つなげた行へカーソルを移す */
   const [focusReq, setFocusReq] = useState<{ id: string; caret: number; n: number } | null>(null);
 
@@ -163,13 +171,13 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     const { doc } = ref.current;
     const all = loadLocalScripts();
     const next = all.map((s) => (s.id === script.id ? scriptWithDoc(s, doc) : s));
-    try {
-      saveLocalScripts(next);
+    if (saveLocalScripts(next)) {
       setSavedAt(Date.now());
-    } catch (err) {
-      console.error(err);
+      setSaveFailed(false);
+    } else {
+      // 容量がいっぱいなど。次の変更でもう一度書く
       dirty.current = true;
-      setSavedAt(null);
+      setSaveFailed(true);
     }
     // 端末の別の場所（IndexedDB）にも版をとっておく（1分に1回）
     const mine = next.find((s) => s.id === script.id);
@@ -184,7 +192,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     const t = setTimeout(saveNow, 300);
     const c = setTimeout(() => {
       const mine = loadLocalScripts().find((s) => s.id === script.id);
-      if (mine) void pushScript(mine);
+      if (mine && cloudOn) void pushScript(mine).then((ok) => setCloudFailed(!ok));
     }, 2500);
     return () => {
       clearTimeout(t);
@@ -657,6 +665,11 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
           ←
         </a>
         <input className="title" value={doc.title} placeholder="無題" onChange={(e) => onTitle(e.target.value)} aria-label="題" />
+        {saveFailed && mode !== 'write' && (
+          <span className="saved bad" role="alert" title="この端末の保存場所がいっぱいです。ネタ一覧でバックアップを書き出してから、要らない台本を消してください">
+            ⚠ 保存できていません
+          </span>
+        )}
         <span className="undo" hidden={make}>
           <button disabled={!h.past.length} onClick={() => dispatch({ type: 'undo' })} aria-label="元に戻す">
             ↶
@@ -702,9 +715,23 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
           <section className="right">
             <div className="sheetbar">
               {sheet}
-              <span className={`saved${savedAt ? '' : ' none'}`} title="この端末に保存した時刻（1分ごとに別の場所にも控えをとっています）">
-                {savedAt ? `✓ ${hm(savedAt)}` : ''}
-              </span>
+              {saveFailed ? (
+                <span className="saved bad" role="alert" title="この端末の保存場所がいっぱいです。ネタ一覧でバックアップを書き出してから、要らない台本を消してください">
+                  ⚠ 保存できていません
+                </span>
+              ) : (
+                <span
+                  className={`saved${savedAt ? '' : ' none'}`}
+                  title={
+                    cloudFailed
+                      ? 'この端末には保存済み。クラウドには送れていません（次にネタ一覧を開いたとき送り直します）'
+                      : 'この端末に保存した時刻（1分ごとに別の場所にも控えをとっています）'
+                  }
+                >
+                  {savedAt ? `✓ ${hm(savedAt)}` : ''}
+                  {cloudFailed ? ' ・クラウド未送信' : ''}
+                </span>
+              )}
             </div>
             {scriptView}
             {!atEnd && (

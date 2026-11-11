@@ -1607,6 +1607,10 @@
   padding: 0 10px 0 4px;
   white-space: nowrap;
 }
+.saved.bad {
+  color: #e5484d;
+  font-weight: 700;
+}
 
 /* 次に打った行が入るところ */
 .ins {

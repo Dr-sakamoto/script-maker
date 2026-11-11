@@ -10,10 +10,14 @@ import { readScriptFile, SCRIPT_FILE_ACCEPT } from '../lib/stage/scriptFile';
 import type { Item as StageItem } from '../lib/stage/types';
 import { quickScript } from '../lib/quick';
 import { listSnapshots, snapshot, type Snapshot } from '../lib/backup';
+import { mergeScripts, mergeUnits } from '../lib/sync';
+import { pushScript, pushUnit } from '../lib/cloud';
 
 type ViewMode = 'home' | 'unitSetup' | 'performerSetup' | 'scriptSetup';
 
 const netaTypes: NetaType[] = ['漫才', 'コント', 'ピン'];
+
+const SAVE_FAILED = 'この端末に保存できませんでした（保存場所がいっぱいです。バックアップを書き出して、要らない台本を消してください）';
 
 function generateId() {
   if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
@@ -120,15 +124,11 @@ export default function HomePage() {
 
   // Save changes to local storage
   useEffect(() => {
-    if (units.length > 0) {
-      saveLocalUnits(units);
-    }
+    if (units.length > 0 && !saveLocalUnits(units)) setStatus(SAVE_FAILED);
   }, [units]);
 
   useEffect(() => {
-    if (scripts.length > 0) {
-      saveLocalScripts(scripts);
-    }
+    if (scripts.length > 0 && !saveLocalScripts(scripts)) setStatus(SAVE_FAILED);
   }, [scripts]);
 
   async function loadData() {
@@ -154,76 +154,67 @@ export default function HomePage() {
       if (unitsRes.error) throw unitsRes.error;
       if (scriptsRes.error) throw scriptsRes.error;
 
-      // Merge local with db if needed, or prefer db.
-      // For MVP simplicity, if cloud data exists, we load it, else stick to local.
-      if (unitsRes.data && unitsRes.data.length > 0) {
-        // We need to fetch performers for each unit
-        const performersRes = await supabase.from('performers').select('*');
-        const dbUnits = unitsRes.data.map((u: any) => ({
-          id: u.id,
-          name: u.name,
-          university: u.university ?? undefined,
-          performers: performersRes.data
-            ? performersRes.data.filter((p: any) => p.unit_id === u.id).map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              grade: p.grade ?? undefined,
-            }))
-            : [],
-        }));
-        setUnits(dbUnits);
-        saveLocalUnits(dbUnits);
-      }
+      // 手元とクラウドを突き合わせる。手元にしか無いものは消さずに、クラウドへ送り直す
+      const [performersRes, charsRes, soundsRes] = await Promise.all([
+        supabase.from('performers').select('*'),
+        supabase.from('characters').select('*'),
+        supabase.from('sounds').select('*'),
+      ]);
+      // 途中までしか取れていない一覧と突き合わせると、演者や役を消してしまう
+      if (performersRes.error) throw performersRes.error;
+      if (charsRes.error) throw charsRes.error;
+      if (soundsRes.error) throw soundsRes.error;
 
-      if (scriptsRes.data && scriptsRes.data.length > 0) {
-        // Fetch characters and sounds
-        const [charsRes, soundsRes] = await Promise.all([
-          supabase.from('characters').select('*'),
-          supabase.from('sounds').select('*'),
-        ]);
+      const dbUnits: Unit[] = (unitsRes.data ?? []).map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        university: u.university ?? undefined,
+        performers: (performersRes.data ?? [])
+          .filter((p: any) => p.unit_id === u.id)
+          .map((p: any) => ({ id: p.id, name: p.name, grade: p.grade ?? undefined })),
+      }));
 
-        const dbScripts = scriptsRes.data.map((s: any) => ({
-          id: s.id,
-          unitId: s.unit_id,
-          title: s.title,
-          netaType: s.neta_type as NetaType,
-          tools: s.tools ?? '',
-          bringIns: s.bring_ins ?? '',
-          costumes: s.costumes ?? '',
-          blocks: s.blocks ?? [],
-          characters: charsRes.data
-            ? charsRes.data.filter((c: any) => c.script_id === s.id).map((c: any) => ({
-              id: c.id,
-              name: c.name,
-              performerId: c.performer_id ?? '',
-              costume: c.costume ?? '',
-            }))
-            : [],
-          sounds: soundsRes.data
-            ? soundsRes.data.filter((sound: any) => sound.unit_id === s.unit_id).map((sound: any) => ({
-              id: sound.id,
-              unitId: s.unit_id,
-              index: sound.index,
-              name: sound.name,
-            }))
-            : [],
-          createdAt: s.created_at,
-          updatedAt: s.updated_at,
-        }));
-        // 舞台（/stage）の項目と人形の色はローカルにだけあるので、手元の分を残す
-        const merged = dbScripts.map((s: ScriptItem) => {
-          const local = localScripts.find((l) => l.id === s.id);
-          if (!local) return s;
-          return {
-            ...s,
-            stage: local.stage,
-            characters: s.characters.map((c) => ({ ...local.characters.find((lc) => lc.id === c.id), ...c })),
-          };
-        });
-        setScripts(merged);
-        saveLocalScripts(merged);
+      const dbScripts: ScriptItem[] = (scriptsRes.data ?? []).map((s: any) => ({
+        id: s.id,
+        unitId: s.unit_id,
+        title: s.title,
+        netaType: s.neta_type as NetaType,
+        tools: s.tools ?? '',
+        bringIns: s.bring_ins ?? '',
+        costumes: s.costumes ?? '',
+        blocks: s.blocks ?? [],
+        characters: (charsRes.data ?? [])
+          .filter((c: any) => c.script_id === s.id)
+          .map((c: any) => ({ id: c.id, name: c.name, performerId: c.performer_id ?? '', costume: c.costume ?? '' })),
+        sounds: (soundsRes.data ?? [])
+          .filter((sound: any) => sound.unit_id === s.unit_id)
+          .map((sound: any) => ({ id: sound.id, unitId: s.unit_id, index: sound.index, name: sound.name })),
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      }));
+
+      // 通信を待っている間に手元が変わっているかもしれないので、読み直してから混ぜる
+      const u = mergeUnits(loadLocalUnits(), dbUnits);
+      const m = mergeScripts(loadLocalScripts(), dbScripts);
+      setUnits(u.units);
+      setScripts(m.scripts);
+      const saved = saveLocalUnits(u.units) && saveLocalScripts(m.scripts);
+
+      // 手元にしか無い・手元のほうが新しいものを送り直す（ユニットが先。台本はユニットに紐づく）
+      let failed = 0;
+      const sentUnits = new Set<string>();
+      for (const unit of u.push) {
+        if (await pushUnit(unit)) sentUnits.add(unit.id);
+        else failed += 1;
       }
-      setStatus('クラウド同期完了');
+      for (const script of m.push) {
+        // ユニットを送れなかった台本は、送っても弾かれる
+        const unitOk = dbUnits.some((x) => x.id === script.unitId) || sentUnits.has(script.unitId);
+        if (!unitOk || !(await pushScript(script))) failed += 1;
+      }
+      if (!saved) setStatus(SAVE_FAILED);
+      else if (failed > 0) setStatus(`クラウドに送れていないものが ${failed} 件（この端末には残っています）`);
+      else setStatus('クラウド同期完了');
     } catch (error) {
       console.error(error);
       setStatus('ローカル保存モード (クラウド同期エラー)');
@@ -234,18 +225,12 @@ export default function HomePage() {
   async function quickWrite(genre: NetaType) {
     const r = quickScript(loadLocalUnits(), genre, selectedUnitId);
     const local = loadLocalScripts();
-    saveLocalUnits(r.units);
-    saveLocalScripts([...local, r.script]);
-    if (supabase) {
-      try {
-        await supabase.from('units').upsert({ id: r.unit.id, name: r.unit.name, university: r.unit.university ?? null });
-        await supabase.from('scripts').insert({ id: r.script.id, unit_id: r.unit.id, title: '', neta_type: genre, blocks: [] });
-        await supabase.from('characters').insert(r.script.characters.map((c) => ({ id: c.id, script_id: r.script.id, name: c.name, performer_id: c.performerId || null })));
-      } catch (e) {
-        // 手元には保存済み。クラウドは次に開いたとき送り直す
-        console.error(e);
-      }
+    if (!saveLocalUnits(r.units) || !saveLocalScripts([...local, r.script])) {
+      setStatus(SAVE_FAILED);
+      return;
     }
+    // 手元には保存済み。送れなくても、次に一覧を開いたとき送り直す
+    if (supabase && (await pushUnit(r.unit))) await pushScript(r.script);
     window.location.href = `/stage?id=${r.script.id}&mode=write`;
   }
 
