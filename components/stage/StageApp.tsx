@@ -11,6 +11,7 @@ import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
 import { MARKS, member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
 import { insertAfter, mergePrev, moveBefore, moveRow, removeItem, splitBody, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
+import { parseQuick, speakersBefore } from '../../lib/stage/quickText';
 import { templateFor } from '../../lib/stage/templates';
 import { histReducer, initHist } from '../../lib/stage/history';
 import { parseScriptText, type ImportResult } from '../../lib/stage/importText';
@@ -24,6 +25,7 @@ import { CastBox, LightConsole, PropBox, SoundDevice, Transport } from './Desk';
 import { HandOff } from './HandOff';
 import { Info } from './Info';
 import { PrintSheet } from './PrintSheet';
+import { BatchBar } from './BatchBar';
 import { InputBar } from './InputBar';
 import { ScriptView } from './ScriptView';
 import { TimeBar } from './TimeBar';
@@ -127,6 +129,23 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   };
   const [role, setRole] = useState<Role>(() => script.characters[0]?.id ?? '');
   const [kind, setKind] = useState<'line' | 'act'>('line');
+  /** かく：まとめ書き（大きな欄に一気に打つ）にしているか。端末が覚えている */
+  const [batch, setBatchRaw] = useState(false);
+  useEffect(() => {
+    try {
+      setBatchRaw(localStorage.getItem('stage:batch') === '1');
+    } catch {
+      /* noop */
+    }
+  }, []);
+  const setBatch = (v: boolean) => {
+    setBatchRaw(v);
+    try {
+      localStorage.setItem('stage:batch', v ? '1' : '0');
+    } catch {
+      /* noop */
+    }
+  };
   const [layers, setLayers] = useState<Set<Layer>>(new Set());
   const [openChip, setOpenChip] = useState<string | null>(null);
   const [focusName, setFocusName] = useState<string | null>(null);
@@ -156,6 +175,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     return o;
   }, [items, doc.sounds]);
   const cur = items[cursor];
+  const batchCtx = useMemo(() => ({ first: role, ...speakersBefore(items, cursor) }), [role, items, cursor]);
   const bubble = cur?.t === 'line' ? cur : null;
 
   const ref = useRef({ doc, cursor });
@@ -378,6 +398,18 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       if (m?.kind === 'puppet') setRole(nextSpeaker(role));
     } else commit(insertAfter(doc.items, cursor, m?.kind === 'puppet' ? { t: 'act', w: role, x: text } : { t: 'act', x: text }));
     setScrollKey((k) => k + 1);
+  };
+  /** まとめ書き：打った文章を行に分けて、今の位置にまとめて入れる（↶ 1回で戻る） */
+  const onBatchSubmit = (text: string) => {
+    const { doc, cursor } = ref.current;
+    const r = parseQuick(text, doc.cast, { first: role, ...speakersBefore(doc.items, cursor) });
+    if (!r.items.length) return false;
+    const next = [...doc.items];
+    next.splice(cursor + 1, 0, ...r.items);
+    dispatch({ type: 'commit', doc: { ...doc, cast: r.cast, items: next }, cursor: cursor + r.items.length });
+    if (r.next) setRole(r.next);
+    setScrollKey((k) => k + 1);
+    return true;
   };
   const onMa = () => {
     const { doc, cursor } = ref.current;
@@ -767,7 +799,10 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       </main>
 
       <footer>
-        {mode === 'write' && (
+        {mode === 'write' && batch && (
+          <BatchBar cast={cast} ctx={batchCtx} onSubmit={onBatchSubmit} onClose={() => setBatch(false)} draftKey={script.id} />
+        )}
+        {mode === 'write' && !batch && (
           <InputBar
             cast={cast}
             role={role}
@@ -780,6 +815,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
             onAddRole={(name) => setRole(onAddPuppet(name))}
             onRename={(r, name) => onCast(r, { name })}
             draftKey={script.id}
+            onBatch={() => setBatch(true)}
             autoFocus
           />
         )}

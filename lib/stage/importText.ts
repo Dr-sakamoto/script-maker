@@ -32,7 +32,7 @@ const MARK_CHARS = MARKS.join('');
 const GENRES = ['コント', '漫才', 'ピン'];
 /** 「〇〇：」でも話者ではない見出し */
 const META = new Set(['作', '作者', '脚本', '構成', '場所', '時間', '舞台', '出演', '配役', '備考', '尺', '種別', 'ネタ種別', 'きっかけ', 'メモ']);
-const NAME = `[^\\s「」『』（）()【】［］\\[\\]：:、。・]{1,12}`;
+export const NAME = `[^\\s「」『』（）()【】［］\\[\\]：:、。・]{1,12}`;
 
 const num = (s: string) => {
   const c = CIRCLED.indexOf(s);
@@ -78,7 +78,8 @@ function clean(raw: string): string[] {
   return joinOpenQuotes(lines);
 }
 
-export function parseScriptText(text: string, base: CastMember[] = []): ImportResult {
+/** opts.settle=false：板付き・明転を足さない（台本の途中に差し込む「まとめ書き」用） */
+export function parseScriptText(text: string, base: CastMember[] = [], opts: { settle?: boolean } = {}): ImportResult {
   const cast = base.map((c) => ({ ...c }));
   const added: Role[] = [];
   const meta: Omit<ImportResult, 'items' | 'cast' | 'added'> = {};
@@ -305,7 +306,7 @@ export function parseScriptText(text: string, base: CastMember[] = []): ImportRe
     push({ t: 'act', x: body });
   }
 
-  return { items: settle(items, cast), cast, added, ...meta };
+  return { items: opts.settle === false ? items : settle(items, cast), cast, added, ...meta };
 }
 
 /**
