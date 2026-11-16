@@ -109,7 +109,7 @@ export function BatchBar(p: Props) {
           autoFocus
           rows={4}
           spellCheck={false}
-          placeholder={'ネタを続けて打つ。改行で話者が交代\n、で始める＝ト書き　、、＝間\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
+          placeholder={'ネタを続けて打つ。改行で話者が交代\n@ で始める＝ト書き　、、＝間\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
