@@ -78,6 +78,11 @@ describe('まとめ書き', () => {
     ]);
   });
 
+  it('文の中の「、、」は「……」になる。それだけの行は間', () => {
+    const r = parseQuick('いや、、なんで\n、、\n@ボケ、黙る、、\nそう、まあ', cast, { first: 'a' });
+    expect(show(r.items)).toEqual(['a:いや……なんで', 'ma1', '(a黙る……)', 'b:そう、まあ']);
+  });
+
   it('ピンは同じ人が話し続ける', () => {
     const r = parseQuick('どうも\n今日は', cast.slice(0, 1), { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', 'a:今日は']);
