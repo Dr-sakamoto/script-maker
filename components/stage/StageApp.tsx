@@ -11,7 +11,7 @@ import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
 import { MARKS, member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
 import { insertAfter, mergePrev, moveBefore, moveRow, removeItem, splitBody, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
-import { parseQuick, speakersBefore, type QuickContext } from '../../lib/stage/quickText';
+import { docToText, joinPrev, setSpeaker, swapFirst, textToItems, toggleKind, type Synced } from '../../lib/stage/writeText';
 import { templateFor } from '../../lib/stage/templates';
 import { histReducer, initHist } from '../../lib/stage/history';
 import { parseScriptText, type ImportResult } from '../../lib/stage/importText';
@@ -25,9 +25,8 @@ import { CastBox, LightConsole, PropBox, SoundDevice, Transport } from './Desk';
 import { HandOff } from './HandOff';
 import { Info } from './Info';
 import { PrintSheet } from './PrintSheet';
-import { BatchBar } from './BatchBar';
-import { InputBar } from './InputBar';
 import { ScriptView } from './ScriptView';
+import { Writer } from './Writer';
 import { TimeBar } from './TimeBar';
 
 // three.js（舞台）は重いので「つくる」を開いたときだけ読み込む。「かく」「わたす」では読まない
@@ -129,23 +128,6 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
   };
   const [role, setRole] = useState<Role>(() => script.characters[0]?.id ?? '');
   const [kind, setKind] = useState<'line' | 'act'>('line');
-  /** かく：まとめ書き（大きな欄に一気に打つ）にしているか。端末が覚えている */
-  const [batch, setBatchRaw] = useState(false);
-  useEffect(() => {
-    try {
-      setBatchRaw(localStorage.getItem('stage:batch') === '1');
-    } catch {
-      /* noop */
-    }
-  }, []);
-  const setBatch = (v: boolean) => {
-    setBatchRaw(v);
-    try {
-      localStorage.setItem('stage:batch', v ? '1' : '0');
-    } catch {
-      /* noop */
-    }
-  };
   const [layers, setLayers] = useState<Set<Layer>>(new Set());
   const [openChip, setOpenChip] = useState<string | null>(null);
   const [focusName, setFocusName] = useState<string | null>(null);
@@ -175,7 +157,6 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     return o;
   }, [items, doc.sounds]);
   const cur = items[cursor];
-  const batchCtx = useMemo(() => ({ first: role, ...speakersBefore(items, cursor) }), [role, items, cursor]);
   const bubble = cur?.t === 'line' ? cur : null;
 
   const ref = useRef({ doc, cursor });
@@ -399,17 +380,48 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     } else commit(insertAfter(doc.items, cursor, m?.kind === 'puppet' ? { t: 'act', w: role, x: text } : { t: 'act', x: text }));
     setScrollKey((k) => k + 1);
   };
-  /** まとめ書き：打った文章を行に分けて、今の位置にまとめて入れる（↶ 1回で戻る） */
-  const onBatchSubmit = (text: string, start?: QuickContext['start']) => {
-    const { doc, cursor } = ref.current;
-    const r = parseQuick(text, doc.cast, { first: role, ...speakersBefore(doc.items, cursor), start });
-    if (!r.items.length) return false;
-    const next = [...doc.items];
-    next.splice(cursor + 1, 0, ...r.items);
-    dispatch({ type: 'commit', doc: { ...doc, cast: r.cast, items: next }, cursor: cursor + r.items.length });
-    if (r.next) setRole(r.next);
-    setScrollKey((k) => k + 1);
-    return true;
+  /**
+   * かく：文章がそのまま台本。打ったそばから台本に入る。
+   * 台本がほかから変わったとき（下の並びで直した・元に戻した・つくるで動かした）は、文章を書き直す
+   */
+  const [written, setWritten] = useState<{ text: string; synced: Synced; items: Item[]; cast: CastMember[] }>(() => {
+    const w = docToText(h.doc);
+    return { ...w, items: h.doc.items, cast: h.doc.cast };
+  });
+  useEffect(() => {
+    if (written.items === items && written.cast === cast) return;
+    const w = docToText(ref.current.doc);
+    setWritten({ ...w, items, cast });
+  }, [items, cast, written.items, written.cast]);
+  /** 文章で足した役（名前「…」）。使わなくなったら消す（打ちかけの名前を役に残さない） */
+  const textRoles = useRef(new Set<Role>());
+  const typedAt = useRef({ t: 0, n: 0 });
+  const onWrite = (text: string) => {
+    const d = ref.current.doc;
+    const r = textToItems(text, d, written.synced);
+    for (const c of r.cast) if (!d.cast.some((x) => x.id === c.id)) textRoles.current.add(c.id);
+    const used = new Set(r.items.flatMap((it) => ('w' in it && it.w ? [it.w] : [])));
+    const nextCast = r.cast.filter((c) => !textRoles.current.has(c.id) || used.has(c.id));
+    const castChanged = nextCast.length !== d.cast.length || nextCast.some((c, i) => c !== d.cast[i]);
+    const c2 = castChanged ? nextCast : d.cast;
+    // 少し手を止めたら、元に戻すの区切りにする
+    const now = Date.now();
+    if (now - typedAt.current.t > 1500) typedAt.current.n++;
+    typedAt.current.t = now;
+    setWritten({ text, synced: r.synced, items: r.items, cast: c2 });
+    dispatch({ type: 'commit', doc: { ...d, cast: c2, items: r.items }, cursor: r.items.length - 1, group: `write:${typedAt.current.n}` });
+  };
+  /** 下の並びから直す（文章は書き直される） */
+  const fixItems = (next: Item[]) => {
+    const d = ref.current.doc;
+    if (next !== d.items) dispatch({ type: 'commit', doc: { ...d, items: next } });
+  };
+  const onWriteSpeaker = (id: string) => {
+    const it = ref.current.doc.items.find((x) => x.id === id);
+    if (it?.t !== 'line') return;
+    const speaking = cast.filter((c) => c.kind !== 'set');
+    const k = speaking.findIndex((c) => c.id === it.w);
+    fixItems(setSpeaker(ref.current.doc.items, id, speaking[(k + 1) % speaking.length].id));
   };
   const onMa = () => {
     const { doc, cursor } = ref.current;
@@ -746,7 +758,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
         {mode === 'write' && (
           <section className="right">
             <div className="sheetbar">
-              {sheet}
+              <span className="sheet" />
               {saveFailed ? (
                 <span className="saved bad" role="alert" title="この端末の保存場所がいっぱいです。ネタ一覧でバックアップを書き出してから、要らない台本を消してください">
                   ⚠ 保存できていません
@@ -765,12 +777,20 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
                 </span>
               )}
             </div>
-            {scriptView}
-            {!atEnd && (
-              <button className="toend" onClick={toEnd}>
-                ⤓ 末尾へ
-              </button>
-            )}
+            <Writer
+              cast={cast}
+              items={items}
+              text={written.text}
+              synced={written.synced}
+              onText={onWrite}
+              onSpeaker={onWriteSpeaker}
+              onKind={(id) => fixItems(toggleKind(cast, ref.current.doc.items, id))}
+              onJoin={(id) => fixItems(joinPrev(ref.current.doc.items, id))}
+              onFirst={(w) => fixItems(swapFirst(ref.current.doc.items, w))}
+              onAddRole={onAddPuppet}
+              template={templateFor(doc.genre, cast) ? doc.genre : undefined}
+              onTemplate={onTemplate}
+            />
           </section>
         )}
         {mode === 'hand' && (
@@ -799,26 +819,6 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
       </main>
 
       <footer>
-        {mode === 'write' && batch && (
-          <BatchBar cast={cast} ctx={batchCtx} onSubmit={onBatchSubmit} onClose={() => setBatch(false)} draftKey={script.id} />
-        )}
-        {mode === 'write' && !batch && (
-          <InputBar
-            cast={cast}
-            role={role}
-            kind={kind}
-            onRole={onTapRole}
-            onKind={setKind}
-            onSubmit={onSubmit}
-            onMa={onMa}
-            onSE={onSE}
-            onAddRole={(name) => setRole(onAddPuppet(name))}
-            onRename={(r, name) => onCast(r, { name })}
-            draftKey={script.id}
-            onBatch={() => setBatch(true)}
-            autoFocus
-          />
-        )}
         {mode === 'write' && <TimeBar cast={cast} items={items} states={states} tl={tl} playing={playing} onToggle={togglePlay} onSeek={onSeek} />}
         {make && (
           <Transport

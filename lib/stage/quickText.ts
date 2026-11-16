@@ -9,13 +9,13 @@ import type { CastMember, CueOp, Item, Role } from './types';
  *
  * - 改行 → 話者が交代。空白（行頭でも行の途中でも） → 直前と同じ話者が続けて話す
  * - 行の途中の空白で区切ったかたまりは別の項目になる（`どうも　@座る　疲れた` → セリフ・動き・セリフ）
- * - `1 セリフ`（数字＋空白） → その番号の役。`名前「セリフ」`・知っている `名前：セリフ` → その役
- * - `@ト書き`（Shift 要らずで、ふだん使わない記号）・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
+ * - `1 セリフ`（数字＋空白） → その番号の役。`名前「セリフ」`・知っている `名前：セリフ` → その役。`「` だけで始まる行はただのセリフ
+ * - `@ト書き`（Shift 要らずで、ふだん使わない記号。行頭の @ の行は空白で分けない）・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
  * - `^1` → 音源1 を出す（`^1 fo 3秒`＝フェードアウト、`^2 出囃子`＝名前付き）。`^拍手`（番号なし）→ SE
- * - `、、`・`・・`・`間`（それだけの行） → 間。文の中の `、、` → `……`（`いや、、なんで` → `いや……なんで`）
+ * - `、、` → `……`（打った数だけ。`、、、、` → `…………`）。間は「…」の数で伝える（間だけの書き方は無い）
  * - `明転`・`暗転`・`SE：拍手`・`【…】` などは台本の読み込みと同じ（importText.ts）
  *
- * 直すときは文章のほうを書き換える（fixQuick）。文章がいつも正で、直した結果もそのまま文章に残る。
+ * 「かく」では、文章と台本を行き来させる（writeText.ts）。
  */
 export type QuickContext = {
   /** 話者がまだ決まっていないときの最初の話者 */
@@ -65,7 +65,7 @@ export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
   const body = trim(raw);
   if (!body) return [];
   const lead = raw.match(/^[ \t　]*/)?.[0] ?? '';
-  if (/^[（(【［\[「『]/.test(body) || /^[1-9１-９][ 　]/.test(body)) return [raw];
+  if (/^[（(【［\[『@＠]/.test(body) || /^[1-9１-９][ 　]/.test(body)) return [raw];
   if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [raw];
   const head = body.match(new RegExp(`^(${NAME})[ \\u3000]`));
   if (head && known(cast, head[1])) return [raw];
@@ -88,13 +88,13 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     rows.push(at);
   };
 
-  /** prev の次に話す役：その前に話していた役。いなければ隣の人形 */
+  /** prev の次に話す役：その前に話していた役。いなければ prev 以外でいちばん先に登録した人形 */
   const after = (): Role | undefined => {
     if (!prev) return ctx.start ?? ctx.first ?? puppets(cast)[0]?.id;
     if (prev2 && member(cast, prev2)) return prev2;
+    // その前の話者がいなければ、先に登録した役から（あとで足した役が割り込まない）
     const ps = puppets(cast).map((c) => c.id);
-    const i = ps.indexOf(prev);
-    return i < 0 ? (ps[0] ?? prev) : ps[(i + 1) % ps.length];
+    return ps.find((id) => id !== prev) ?? prev;
   };
   const spoke = (w: Role) => {
     if (w === prev) return;
@@ -140,11 +140,8 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     if (!l) return;
     let m: RegExpMatchArray | null;
 
-    // 間：、、／・・／‥（打った数だけ長く）／間
-    if ((m = l.match(/^(?:([、,，・.．。])\1+|‥+|…+)$/))) return void push(withId({ t: 'ma', s: m[1] ? l.length - 1 : l.length }));
-    if (l === '間') return void push(withId({ t: 'ma', s: 1 }));
-    // 文の中の「、、」は「……」に（打ちやすい読点で三点リーダーを書く）
-    l = l.replace(/[、,，]{2,}/g, '……');
+    // 「、、」は「……」に（打ちやすい読点で三点リーダーを書く。打った数だけ長く）
+    l = l.replace(/[、,，]{2,}/g, (d) => '…'.repeat(d.length));
     // 行頭に ^ → 音：番号があれば音源、なければ SE
     if ((m = l.match(/^[\^＾][\s　]*(.*)$/))) return sound(m[1]);
     // 行頭に @ → ト書き（Shift の要る括弧を打たずに済む）
@@ -155,8 +152,8 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
       const who = cast.filter((c) => c.kind !== 'set')[n - 1];
       if (who) return say(who.id, m[2].replace(/^「|」$/g, ''));
     }
-    // 「セリフ」だけ（閉じなくてもいい）→ 交代して話す。ト書きに見えてもセリフにする印でもある
-    if (/^「/.test(l)) return bare(l.replace(/^「|」$/g, ''), cont);
+    // 「で始まる行は、そのままのセリフ（括弧も文字のまま）
+    if (/^「/.test(l)) return bare(l, cont);
     // 知らない名前の「名前：…」は役にしない（「結論：やめとけ」「10:30に集合」を役にしないため）
     if ((m = l.match(new RegExp(`^(${NAME})\\s*[：:\\t]`))) && !known(cast, m[1]) && !/^(SE|効果音)$/i.test(m[1])) return bare(l, cont);
     // ト書きは閉じ括弧を省ける
@@ -187,79 +184,4 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
       }),
     );
   return { items, rows, cast, added, next: after() };
-}
-
-export type QuickFix = 'speaker' | 'kind' | 'join';
-
-/** かたまりから、話者の印（行頭の空白・番号）と括弧を外した中身 */
-function core(s: string): string {
-  let t = trim(s);
-  const m = t.match(/^[1-9１-９][ 　]+(.+)$/);
-  if (m) t = m[1];
-  if (/^[@＠]/.test(t)) return trim(t.slice(1));
-  if (/^[（(]/.test(t)) return t.replace(/^[（(]/, '').replace(/[）)]$/, '');
-  return t.replace(/^「/, '').replace(/」$/, '');
-}
-
-/**
- * 割り振りを直す。i 番目の項目について、文章のほうを書き換えて返す（直せなければ null）。
- * - speaker：話者を次の役に替える（続きの行の交代もそれに合わせて変わる）
- * - kind：セリフ ⇔ 動き
- * - join：前の行につなぐ
- * 1行にいくつも入っていたら、そのとき行に分けて書き直す。
- */
-export function fixQuick(text: string, cast: CastMember[], ctx: QuickContext, i: number, fix: QuickFix): string | null {
-  const r = parseQuick(text, cast, ctx);
-  const it = r.items[i];
-  const row = r.rows[i];
-  if (!it || !row || (it.t !== 'line' && it.t !== 'act')) return null;
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  const segs = segmentsOf(lines[row.line], cast);
-  const s = core(segs[row.seg]);
-  const put = (next: string[]) => {
-    lines.splice(row.line, 1, ...next);
-    return lines.join('\n');
-  };
-
-  if (fix === 'kind') {
-    // 動きに見えてしまうセリフは「」で包んで、セリフだと決める
-    const lead = segs[row.seg].match(/^[ \t　]*/)?.[0] ?? '';
-    segs[row.seg] = it.t === 'line' ? `@${s}` : `${lead}「${trim(segs[row.seg]).replace(/^[@＠（(]|[）)]$/g, '')}」`;
-    return put(segs);
-  }
-
-  if (fix === 'speaker') {
-    if (it.t !== 'line') return null;
-    const speaking = r.cast.filter((c) => c.kind !== 'set');
-    const k = speaking.findIndex((c) => c.id === it.w);
-    if (speaking.length < 2 || k < 0) return null;
-    const to = speaking[(k + 1) % speaking.length];
-    let before: Role | undefined = ctx.prev;
-    for (let j = i - 1; j >= 0; j--) {
-      const p = r.items[j];
-      if (p.t === 'line') {
-        before = p.w;
-        break;
-      }
-    }
-    const n = speaking.indexOf(to) + 1;
-    // 直前と同じ人なら「行頭の空白」、違えば番号（10人目からは 名前「…」）
-    segs[row.seg] = to.id === before ? `　${s}` : n <= 9 ? `${n} ${s}` : `${to.name}「${s}」`;
-    return put(segs);
-  }
-
-  // join：前の項目（セリフ・動き）の後ろにつなぐ
-  const p = r.items[i - 1];
-  const prow = r.rows[i - 1];
-  if (!p || (p.t !== 'line' && p.t !== 'act')) return null;
-  const glue = (a: string) => (/[）)]$/.test(trim(a)) ? trim(a).replace(/[）)]$/, `${s}）`) : /」$/.test(trim(a)) ? trim(a).replace(/」$/, `${s}」`) : a + s);
-  if (prow.line === row.line) {
-    segs.splice(row.seg - 1, 2, glue(segs[row.seg - 1]));
-    return put(segs);
-  }
-  const psegs = segmentsOf(lines[prow.line], cast);
-  psegs[psegs.length - 1] = glue(psegs[psegs.length - 1]);
-  segs.splice(row.seg, 1);
-  lines.splice(prow.line, row.line - prow.line + 1, ...psegs, ...segs);
-  return lines.join('\n');
 }
