@@ -776,6 +776,16 @@
   background: var(--c, var(--ink));
   color: #fff;
 }
+.batchbar .bhead .add {
+  flex: none;
+  min-width: 34px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1.5px dashed var(--line);
+  background: none;
+  color: var(--sub);
+  font-size: 13px;
+}
 .batchbar .nums button:disabled {
   border-color: transparent;
   padding-inline: 0;

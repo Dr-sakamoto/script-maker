@@ -90,6 +90,11 @@ describe('まとめ書き', () => {
     expect(show(parseQuick('いらっしゃい\nえ\nはい', three, { first: 'a', start: 'c' }).items)).toEqual(['c:いらっしゃい', 'a:え', 'c:はい']);
   });
 
+  it('その前の話者がいないときは、先に登録した役から（あとで足した役が割り込まない）', () => {
+    expect(show(parseQuick('はい', three, { first: 'a', prev: 'b' }).items)).toEqual(['a:はい']);
+    expect(show(parseQuick('はい', three, { first: 'a', prev: 'a' }).items)).toEqual(['b:はい']);
+  });
+
   it('ピンは同じ人が話し続ける', () => {
     const r = parseQuick('どうも\n今日は', cast.slice(0, 1), { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', 'a:今日は']);

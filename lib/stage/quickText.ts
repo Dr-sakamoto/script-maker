@@ -88,13 +88,13 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     rows.push(at);
   };
 
-  /** prev の次に話す役：その前に話していた役。いなければ隣の人形 */
+  /** prev の次に話す役：その前に話していた役。いなければ prev 以外でいちばん先に登録した人形 */
   const after = (): Role | undefined => {
     if (!prev) return ctx.start ?? ctx.first ?? puppets(cast)[0]?.id;
     if (prev2 && member(cast, prev2)) return prev2;
+    // その前の話者がいなければ、先に登録した役から（あとで足した役が割り込まない）
     const ps = puppets(cast).map((c) => c.id);
-    const i = ps.indexOf(prev);
-    return i < 0 ? (ps[0] ?? prev) : ps[(i + 1) % ps.length];
+    return ps.find((id) => id !== prev) ?? prev;
   };
   const spoke = (w: Role) => {
     if (w === prev) return;

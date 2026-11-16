@@ -800,7 +800,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
 
       <footer>
         {mode === 'write' && batch && (
-          <BatchBar cast={cast} ctx={batchCtx} onSubmit={onBatchSubmit} onClose={() => setBatch(false)} draftKey={script.id} />
+          <BatchBar cast={cast} ctx={batchCtx} onSubmit={onBatchSubmit} onClose={() => setBatch(false)} onAddRole={onAddPuppet} draftKey={script.id} />
         )}
         {mode === 'write' && !batch && (
           <InputBar

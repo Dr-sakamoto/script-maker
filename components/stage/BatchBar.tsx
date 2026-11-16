@@ -11,6 +11,8 @@ type Props = {
   ctx: QuickContext;
   /** 台本に入れる。start＝選んだ「話し始める人」。入れたら true */
   onSubmit: (text: string, start?: Role) => boolean;
+  /** 役の並びの「＋」：新しい役を足す */
+  onAddRole?: (name: string) => void;
   /** 1行ずつ打つ欄に戻る */
   onClose: () => void;
   /** 打ちかけの文字をこの名前で端末にとっておく */
@@ -116,6 +118,21 @@ export function BatchBar(p: Props) {
             </button>
           ))}
         </span>
+          {p.onAddRole && (
+            <button
+              className="add"
+              aria-label="役を足す"
+              title="役を足す"
+              onPointerDown={keep}
+              onClick={() => {
+                const name = prompt('新しい役の名前')?.trim();
+                if (name) p.onAddRole?.(name);
+                area.current?.focus();
+              }}
+            >
+              ＋
+            </button>
+          )}
         <button className="one" onClick={p.onClose} title="1行ずつ打つ欄に戻る">
           1行ずつ
         </button>
