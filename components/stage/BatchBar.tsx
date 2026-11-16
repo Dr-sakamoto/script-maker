@@ -2,15 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { member } from '../../lib/stage/cast';
 import { fixQuick, parseQuick, type QuickContext, type QuickFix } from '../../lib/stage/quickText';
 import { initialState } from '../../lib/stage/state';
-import type { CastMember, Item } from '../../lib/stage/types';
+import type { CastMember, Item, Role } from '../../lib/stage/types';
 import { chipLook } from './chips';
 
 type Props = {
   cast: CastMember[];
   /** 差し込む位置までの話者（何も付けない行の話者を決める） */
   ctx: QuickContext;
-  /** 台本に入れる。入れたら true */
-  onSubmit: (text: string) => boolean;
+  /** 台本に入れる。start＝選んだ「話し始める人」。入れたら true */
+  onSubmit: (text: string, start?: Role) => boolean;
   /** 1行ずつ打つ欄に戻る */
   onClose: () => void;
   /** 打ちかけの文字をこの名前で端末にとっておく */
@@ -46,7 +46,12 @@ export function BatchBar(p: Props) {
   const area = useRef<HTMLTextAreaElement>(null);
   const prev = useRef<HTMLOListElement>(null);
   const fixed = useRef(false);
-  const r = useMemo(() => parseQuick(text, p.cast, p.ctx), [text, p.cast, p.ctx]);
+  /** 話し始める人（押して選んだとき。選ばなければ、差し込む位置までの続きから） */
+  const [start, setStart] = useState<Role>();
+  const ctx = useMemo<QuickContext>(() => ({ ...p.ctx, start }), [p.ctx, start]);
+  const auto = useMemo(() => parseQuick('', p.cast, p.ctx).next, [p.cast, p.ctx]);
+  const first = start ?? auto;
+  const r = useMemo(() => parseQuick(text, p.cast, ctx), [text, p.cast, ctx]);
   const init = useMemo(() => initialState(r.cast), [r.cast]);
   const speaking = p.cast.filter((c) => c.kind !== 'set');
   const mac = useMemo(() => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform), []);
@@ -66,7 +71,7 @@ export function BatchBar(p: Props) {
 
   /** 割り振りを直す：文章のほうを書き換える（直した結果も文章に残る） */
   const fix = (i: number, f: QuickFix) => {
-    const t = fixQuick(text, p.cast, p.ctx, i, f);
+    const t = fixQuick(text, p.cast, ctx, i, f);
     if (t == null) return;
     fixed.current = true;
     setText(t);
@@ -77,7 +82,10 @@ export function BatchBar(p: Props) {
 
   const send = () => {
     if (!r.items.length) return;
-    if (p.onSubmit(text)) setText('');
+    if (p.onSubmit(text, start)) {
+      setText('');
+      setStart(undefined);
+    }
     area.current?.focus();
   };
 
@@ -89,12 +97,23 @@ export function BatchBar(p: Props) {
   return (
     <div className="batchbar">
       <div className="bhead">
-        <span className="nums" aria-label="役の番号">
+        <span className="nums" role="radiogroup" aria-label="話し始める人（数字は「1 セリフ」の番号）">
+          {canSwap && <em>最初</em>}
           {speaking.map((c, i) => (
-            <span key={c.id} style={{ '--c': c.color } as React.CSSProperties}>
+            <button
+              key={c.id}
+              role="radio"
+              aria-checked={c.id === first}
+              className={c.id === first ? 'on' : ''}
+              style={{ '--c': c.color } as React.CSSProperties}
+              disabled={!canSwap}
+              onPointerDown={keep}
+              onClick={() => setStart(c.id === auto ? undefined : c.id)}
+              title="押すと、この人から話し始める"
+            >
               <i>{i + 1}</i>
               {c.name}
-            </span>
+            </button>
           ))}
         </span>
         <button className="one" onClick={p.onClose} title="1行ずつ打つ欄に戻る">

@@ -20,6 +20,8 @@ import type { CastMember, CueOp, Item, Role } from './types';
 export type QuickContext = {
   /** 話者がまだ決まっていないときの最初の話者 */
   first?: Role;
+  /** この人から話し始める（選んだとき。差し込む位置までの話者より優先） */
+  start?: Role;
   /** 直前に話した役と、その前に話した別の役（差し込む位置までの台本から） */
   prev?: Role;
   prev2?: Role;
@@ -79,7 +81,7 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
   const added: Role[] = [];
   const items: Item[] = [];
   const rows: QuickRow[] = [];
-  let { prev, prev2 } = ctx;
+  let { prev, prev2 } = ctx.start ? {} : ctx;
   let at: QuickRow = { line: 0, seg: 0 };
   const push = (it: Item) => {
     items.push(it);
@@ -88,7 +90,7 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
 
   /** prev の次に話す役：その前に話していた役。いなければ隣の人形 */
   const after = (): Role | undefined => {
-    if (!prev) return ctx.first ?? puppets(cast)[0]?.id;
+    if (!prev) return ctx.start ?? ctx.first ?? puppets(cast)[0]?.id;
     if (prev2 && member(cast, prev2)) return prev2;
     const ps = puppets(cast).map((c) => c.id);
     const i = ps.indexOf(prev);

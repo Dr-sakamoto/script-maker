@@ -83,6 +83,13 @@ describe('まとめ書き', () => {
     expect(show(r.items)).toEqual(['a:いや……なんで', 'ma1', '(a黙る……)', 'b:そう、まあ']);
   });
 
+  it('話し始める人を選ぶと、直前の話者より優先する', () => {
+    const before = { prev: 'a', prev2: 'b' } as const;
+    expect(show(parseQuick('どうも\nはい', cast, { first: 'a', ...before }).items)).toEqual(['b:どうも', 'a:はい']);
+    expect(show(parseQuick('どうも\nはい', cast, { first: 'a', ...before, start: 'a' }).items)).toEqual(['a:どうも', 'b:はい']);
+    expect(show(parseQuick('いらっしゃい\nえ\nはい', three, { first: 'a', start: 'c' }).items)).toEqual(['c:いらっしゃい', 'a:え', 'c:はい']);
+  });
+
   it('ピンは同じ人が話し続ける', () => {
     const r = parseQuick('どうも\n今日は', cast.slice(0, 1), { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', 'a:今日は']);

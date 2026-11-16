@@ -11,7 +11,7 @@ import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
 import { MARKS, member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
 import { insertAfter, mergePrev, moveBefore, moveRow, removeItem, splitBody, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
-import { parseQuick, speakersBefore } from '../../lib/stage/quickText';
+import { parseQuick, speakersBefore, type QuickContext } from '../../lib/stage/quickText';
 import { templateFor } from '../../lib/stage/templates';
 import { histReducer, initHist } from '../../lib/stage/history';
 import { parseScriptText, type ImportResult } from '../../lib/stage/importText';
@@ -400,9 +400,9 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     setScrollKey((k) => k + 1);
   };
   /** まとめ書き：打った文章を行に分けて、今の位置にまとめて入れる（↶ 1回で戻る） */
-  const onBatchSubmit = (text: string) => {
+  const onBatchSubmit = (text: string, start?: QuickContext['start']) => {
     const { doc, cursor } = ref.current;
-    const r = parseQuick(text, doc.cast, { first: role, ...speakersBefore(doc.items, cursor) });
+    const r = parseQuick(text, doc.cast, { first: role, ...speakersBefore(doc.items, cursor), start });
     if (!r.items.length) return false;
     const next = [...doc.items];
     next.splice(cursor + 1, 0, ...r.items);
