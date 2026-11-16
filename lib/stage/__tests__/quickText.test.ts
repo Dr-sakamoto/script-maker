@@ -42,10 +42,10 @@ describe('まとめ書き', () => {
     expect(show(r.items)).toEqual(['c:いらっしゃいませ', 'a:ラーメン', 'c:え', 'c:はい', 'a:もう一回']);
   });
 
-  it('ト書き・間・照明・音響', () => {
-    const r = parseQuick('（ボケ、座る\n(笑う)\n、、\n・・・\n暗転\nSE：拍手\n【じわ明転 3秒】', cast, { first: 'a' });
-    expect(show(r.items)).toEqual(['(a座る)', '(笑う)', 'ma1', 'ma2', 'light', 'se', 'light']);
-    expect(r.items[6]).toMatchObject({ on: true, fade: 3 });
+  it('ト書き・照明・音響', () => {
+    const r = parseQuick('（ボケ、座る\n(笑う)\n暗転\nSE：拍手\n【じわ明転 3秒】', cast, { first: 'a' });
+    expect(show(r.items)).toEqual(['(a座る)', '(笑う)', 'light', 'se', 'light']);
+    expect(r.items[4]).toMatchObject({ on: true, fade: 3 });
   });
 
   it('知らない名前の「：」は役にしない。名前「…」は役を足す', () => {
@@ -63,7 +63,7 @@ describe('まとめ書き', () => {
 
   it('行頭の @ はト書き（括弧を打たなくていい）', () => {
     const r = parseQuick('どうも\n@ボケ、座る\n＠笑う　なんで\n、そうだね\n、、', cast, { first: 'a' });
-    expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う)', 'a:なんで', 'b:、そうだね', 'ma1']);
+    expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う)', 'a:なんで', 'b:、そうだね', 'a:……']);
     expect(fixQuick('＠座る', cast, { first: 'a' }, 0, 'kind')).toBe('「座る」');
   });
 
@@ -78,9 +78,9 @@ describe('まとめ書き', () => {
     ]);
   });
 
-  it('文の中の「、、」は「……」になる。それだけの行は間', () => {
+  it('「、、」は打った数だけ「…」になる。それだけの行も間にはせずセリフ', () => {
     const r = parseQuick('いや、、なんで\n、、\n@ボケ、黙る、、\nそう、まあ', cast, { first: 'a' });
-    expect(show(r.items)).toEqual(['a:いや……なんで', 'ma1', '(a黙る……)', 'b:そう、まあ']);
+    expect(show(r.items)).toEqual(['a:いや……なんで', 'b:……', '(a黙る……)', 'a:そう、まあ']);
     expect(show(parseQuick('え、、、、うそ', cast, { first: 'a' }).items)).toEqual(['a:え…………うそ']);
   });
 
@@ -114,9 +114,9 @@ describe('まとめ書き：雑に打った文章', () => {
     expect(show(parseQuick(blob, cast, { first: 'a' }).items)).toEqual([`a:${blob}`]);
   });
 
-  it('かたまりの中の照明・間・ト書きも拾う', () => {
-    const r = parseQuick('どうも　間　ボケが椅子に座る　ツッコミ、立ち上がる。　ありがとうございました　暗転', cast, { first: 'a' });
-    expect(show(r.items)).toEqual(['a:どうも', 'ma1', '(a椅子に座る)', '(b立ち上がる)', 'a:ありがとうございました', 'light']);
+  it('かたまりの中の照明・ト書きも拾う', () => {
+    const r = parseQuick('どうも　ボケが椅子に座る　ツッコミ、立ち上がる。　ありがとうございました　暗転', cast, { first: 'a' });
+    expect(show(r.items)).toEqual(['a:どうも', '(a椅子に座る)', '(b立ち上がる)', 'a:ありがとうございました', 'light']);
   });
 
   it('役名で始まっても、セリフらしいものはセリフのまま', () => {
@@ -174,7 +174,7 @@ describe('まとめ書き：割り振りを直す', () => {
     expect(after(fixQuick('どうも　疲れた', cast, ctx, 1, 'speaker')!)).toEqual(['a:どうも', 'b:疲れた']);
   });
 
-  it('照明や間は直す対象にしない', () => {
+  it('照明は直す対象にしない', () => {
     expect(fixQuick('暗転', cast, ctx, 0, 'speaker')).toBeNull();
   });
 });
