@@ -61,10 +61,21 @@ describe('まとめ書き', () => {
     expect(show(r.items)).toEqual(['a:衣装：スーツ', 'b:え']);
   });
 
-  it('行頭の @・^ はト書き（括弧を打たなくていい）', () => {
-    const r = parseQuick('どうも\n@ボケ、座る\n＾笑う　なんで\n、そうだね\n、、', cast, { first: 'a' });
+  it('行頭の @ はト書き（括弧を打たなくていい）', () => {
+    const r = parseQuick('どうも\n@ボケ、座る\n＠笑う　なんで\n、そうだね\n、、', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う)', 'b:なんで', 'a:、そうだね', 'ma1']);
     expect(fixQuick('＠座る', cast, { first: 'a' }, 0, 'kind')).toBe('「座る」');
+  });
+
+  it('行頭の ^ は音：番号があれば音源、なければ SE', () => {
+    const r = parseQuick('^1\n^2 出囃子\n＾１ fo 3秒\n^2 c.o\n^拍手', cast, { first: 'a' });
+    expect(r.items.map(({ id: _, ...it }) => it)).toEqual([
+      { t: 'cue', n: 1, op: 'C.I' },
+      { t: 'cue', n: 2, op: 'C.I', x: '出囃子' },
+      { t: 'cue', n: 1, op: 'F.O', sec: 3 },
+      { t: 'cue', n: 2, op: 'C.O' },
+      { t: 'se', x: '拍手' },
+    ]);
   });
 
   it('ピンは同じ人が話し続ける', () => {
