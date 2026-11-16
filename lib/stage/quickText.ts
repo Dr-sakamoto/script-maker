@@ -7,8 +7,8 @@ import type { CastMember, CueOp, Item, Role } from './types';
  * 「まとめ書き」：大きな欄に一気に打った文章を、台本の項目へ振り分ける。
  * 速く打てるよう、雑に打っても見当をつけて割り振り、外れたところはあとから直せるようにする。
  *
- * - 何も付けない行 → セリフ（話者は交代）。行頭に空白 → 直前と同じ話者が続けて話す
- * - 改行していなくても、空白で区切ってあれば話者を替える。長い文のかたまりは「。！？」でも分ける
+ * - 改行 → 話者が交代。空白（行頭でも行の途中でも） → 直前と同じ話者が続けて話す
+ * - 行の途中の空白で区切ったかたまりは別の項目になる（`どうも　@座る　疲れた` → セリフ・動き・セリフ）
  * - `1 セリフ`（数字＋空白） → その番号の役。`名前「セリフ」`・知っている `名前：セリフ` → その役
  * - `@ト書き`（Shift 要らずで、ふだん使わない記号）・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
  * - `^1` → 音源1 を出す（`^1 fo 3秒`＝フェードアウト、`^2 出囃子`＝名前付き）。`^拍手`（番号なし）→ SE
@@ -54,14 +54,9 @@ const DIGITS = '１２３４５６７８９';
 const OPEN = /^[（(【［\[]/;
 const trim = (s: string) => s.replace(/^[\s　]+|[\s　]+$/g, '');
 const known = (cast: CastMember[], name: string) => cast.some((c) => c.name === name || (c.mark && c.mark === name));
-/** 「。！？」で分けるのは、これより長い文のかたまりだけ（短い行は1人が続けて話したものと見る） */
-const BLOB = 40;
-
 /**
- * 1行を、話者が替わりそうなところで分ける。
- * - 空白（日本語どうしの間）は区切り
- * - 長い文のかたまり（改行なしで続けて打った・音声入力）は「。！？」でも分ける
- * 書式のある行（括弧・番号・名前：…）は分けない。行頭の空白（同じ人が続ける印）は最初のかたまりに残す
+ * 1行を、行の途中の空白（日本語どうしの間）で分ける。2つ目からのかたまりは「同じ人が続ける」印の空白を頭に付ける。
+ * 書式のある行（括弧・番号・名前：…）は分けない。行頭の空白は最初のかたまりに残す
  */
 export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
   const body = trim(raw);
@@ -71,13 +66,11 @@ export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
   if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [raw];
   const head = body.match(new RegExp(`^(${NAME})[ \\u3000]`));
   if (head && known(cast, head[1])) return [raw];
-
-  let parts = body.split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/);
-  const ends = body.match(/[。！？!?]+(?=[^。！？!?」』）)\s])/g)?.length ?? 0;
-  if (body.length > BLOB && ends >= 2)
-    parts = parts.flatMap((p) => (/[「（(『]/.test(p) ? [p] : p.split(/(?<=[。！？!?])(?=[^。！？!?」』）)\s])/)));
-  parts = parts.map(trim).filter(Boolean);
-  return parts.map((p, i) => (i === 0 ? lead + p : p));
+  const parts = body
+    .split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/)
+    .map(trim)
+    .filter(Boolean);
+  return parts.map((p, i) => (i === 0 ? lead + p : `　${p}`));
 }
 
 export function parseQuick(text: string, base: CastMember[], ctx: QuickContext = {}): QuickResult {
@@ -225,7 +218,8 @@ export function fixQuick(text: string, cast: CastMember[], ctx: QuickContext, i:
 
   if (fix === 'kind') {
     // 動きに見えてしまうセリフは「」で包んで、セリフだと決める
-    segs[row.seg] = it.t === 'line' ? `@${s}` : `「${trim(segs[row.seg]).replace(/^[@＠（(]|[）)]$/g, '')}」`;
+    const lead = segs[row.seg].match(/^[ \t　]*/)?.[0] ?? '';
+    segs[row.seg] = it.t === 'line' ? `@${s}` : `${lead}「${trim(segs[row.seg]).replace(/^[@＠（(]|[）)]$/g, '')}」`;
     return put(segs);
   }
 
