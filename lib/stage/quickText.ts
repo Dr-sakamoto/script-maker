@@ -1,7 +1,7 @@
 import { member, puppets } from './cast';
 import { withId } from './edit';
 import { NAME, parseScriptText } from './importText';
-import type { CastMember, Item, Role } from './types';
+import type { CastMember, CueOp, Item, Role } from './types';
 
 /**
  * 「まとめ書き」：大きな欄に一気に打った文章を、台本の項目へ振り分ける。
@@ -10,7 +10,8 @@ import type { CastMember, Item, Role } from './types';
  * - 何も付けない行 → セリフ（話者は交代）。行頭に空白 → 直前と同じ話者が続けて話す
  * - 改行していなくても、空白で区切ってあれば話者を替える。長い文のかたまりは「。！？」でも分ける
  * - `1 セリフ`（数字＋空白） → その番号の役。`名前「セリフ」`・知っている `名前：セリフ` → その役
- * - `（ト書き` → 動き（閉じ括弧は無くてもいい）。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
+ * - `@ト書き`（Shift 要らずで、ふだん使わない記号）・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
+ * - `^1` → 音源1 を出す（`^1 fo 3秒`＝フェードアウト、`^2 出囃子`＝名前付き）。`^拍手`（番号なし）→ SE
  * - `、、`・`・・`・`間` → 間。`明転`・`暗転`・`SE：拍手`・`【…】` などは台本の読み込みと同じ（importText.ts）
  *
  * 直すときは文章のほうを書き換える（fixQuick）。文章がいつも正で、直した結果もそのまま文章に残る。
@@ -121,6 +122,22 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     return true;
   };
 
+  /** ^ のあと：`1`・`1 fo 3秒`・`2 出囃子` → 音源、`拍手` → SE */
+  const sound = (b: string) => {
+    const c = b.match(/^([0-9０-９]+)[\s　]*(.*)$/);
+    if (!c) return void (b && push(withId({ t: 'se', x: b })));
+    const n = Number(c[1].replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)));
+    let rest = c[2];
+    const o = rest.match(/(?<![A-Za-z])([CFcf])[.．・]?\s*([IOio])(?![A-Za-z])/);
+    const op = (o ? `${o[1].toUpperCase()}.${o[2].toUpperCase()}` : 'C.I') as CueOp;
+    if (o) rest = rest.replace(o[0], '');
+    const t = rest.match(/(\d+(?:\.\d+)?)\s*(?:秒|s\b|sec)/);
+    if (t) rest = rest.replace(t[0], '');
+    const x = trim(rest.replace(/[『』]/g, ''));
+    const sec = t && (op === 'F.I' || op === 'F.O') ? Number(t[1]) : undefined;
+    push(withId({ t: 'cue', n, op, ...(sec ? { sec } : {}), ...(x ? { x } : {}) }));
+  };
+
   const one = (raw: string) => {
     const cont = /^[ \t　]/.test(raw);
     let l = trim(raw);
@@ -130,6 +147,10 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     // 間：、、／・・／‥（打った数だけ長く）／間
     if ((m = l.match(/^(?:([、,，・.．。])\1+|‥+|…+)$/))) return void push(withId({ t: 'ma', s: m[1] ? l.length - 1 : l.length }));
     if (l === '間') return void push(withId({ t: 'ma', s: 1 }));
+    // 行頭に ^ → 音：番号があれば音源、なければ SE
+    if ((m = l.match(/^[\^＾][\s　]*(.*)$/))) return sound(m[1]);
+    // 行頭に @ → ト書き（Shift の要る括弧を打たずに済む）
+    if ((m = l.match(/^[@＠][\s　]*(.+)$/))) l = `（${m[1]}）`;
     // 番号で話者：1 セリフ
     if ((m = l.match(/^([1-9１-９])[ 　]+(.+)$/))) {
       const n = DIGITS.indexOf(m[1]) >= 0 ? DIGITS.indexOf(m[1]) + 1 : Number(m[1]);
@@ -177,6 +198,7 @@ function core(s: string): string {
   let t = trim(s);
   const m = t.match(/^[1-9１-９][ 　]+(.+)$/);
   if (m) t = m[1];
+  if (/^[@＠]/.test(t)) return trim(t.slice(1));
   if (/^[（(]/.test(t)) return t.replace(/^[（(]/, '').replace(/[）)]$/, '');
   return t.replace(/^「/, '').replace(/」$/, '');
 }
@@ -203,7 +225,7 @@ export function fixQuick(text: string, cast: CastMember[], ctx: QuickContext, i:
 
   if (fix === 'kind') {
     // 動きに見えてしまうセリフは「」で包んで、セリフだと決める
-    segs[row.seg] = it.t === 'line' ? `（${s}）` : `「${trim(segs[row.seg]).replace(/^[（(]|[）)]$/g, '')}」`;
+    segs[row.seg] = it.t === 'line' ? `@${s}` : `「${trim(segs[row.seg]).replace(/^[@＠（(]|[）)]$/g, '')}」`;
     return put(segs);
   }
 
