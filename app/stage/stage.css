@@ -721,15 +721,7 @@
   color: var(--sound);
   border-color: var(--sound);
 }
-/* --- まとめ書き：大きな欄に一気に打つ */
-.stage-app .rolechip.batch {
-  margin-left: auto;
-  border: 1.5px solid var(--line);
-  color: var(--ink);
-  font-weight: 400;
-  font-size: 13px;
-  white-space: nowrap;
-}
+/* --- かく：文章で書く（Writer） */
 .batchbar {
   padding: 6px 8px 4px;
   display: flex;
@@ -795,11 +787,6 @@
   font-weight: 400;
   opacity: 0.7;
   margin-right: 3px;
-}
-.batchbar .one {
-  flex: none;
-  font-size: 13px;
-  padding: 5px 10px;
 }
 .batchbar .bbody {
   display: grid;
@@ -880,39 +867,6 @@
   padding: 0 8px;
   font-size: 12px;
   color: var(--sub);
-}
-.batchbar .bfoot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.batchbar .next {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--sub);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.stage-app .batchbar .send {
-  flex: none;
-  min-height: 40px;
-  padding: 6px 14px;
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
-  font-weight: 700;
-}
-.stage-app .batchbar .send:disabled {
-  opacity: 0.4;
-}
-.batchbar kbd {
-  font: inherit;
-  font-weight: 400;
-  font-size: 11px;
-  opacity: 0.7;
-  margin-left: 8px;
 }
 @media (pointer: coarse) {
   .batchbar kbd {
@@ -1933,4 +1887,38 @@
   min-height: 200px;
   color: var(--sub);
   font-size: 13px;
+}
+
+/* --- かく：文章がそのまま台本。欄と台本の形を画面いっぱいに */
+.batchbar.writer {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.writer .bbody {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+.writer textarea {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+.writer .bprev {
+  height: 100%;
+  max-height: none;
+}
+/* 今打っている行 */
+.writer .bprev li.cur {
+  background: var(--input);
+  border-radius: 6px;
+  box-shadow: -3px 0 0 var(--light);
+}
+@media (min-width: 820px) {
+  .writer .bbody {
+    grid-template-rows: minmax(0, 1fr);
+  }
 }
