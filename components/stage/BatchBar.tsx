@@ -89,6 +89,15 @@ export function BatchBar(p: Props) {
     area.current?.focus();
   };
 
+  /** 最後に話した人（このまま改行したら続けて話す人） */
+  const last = [...r.items].reverse().find((it) => it.t === 'line')?.w;
+  const name = (w: Role) => {
+    const m = member(r.cast, w);
+    return m ? (
+      <b style={{ color: m.color }}>{m.name}</b>
+    ) : null;
+  };
+
   const label = (it: Item) => {
     if (it.t === 'move') return `${member(r.cast, it.w)?.name ?? '?'} ${it.in ? '出' : 'ハケ'}`;
     return chipLook(r.cast, it, init).text;
@@ -128,7 +137,7 @@ export function BatchBar(p: Props) {
           autoFocus
           rows={4}
           spellCheck={false}
-          placeholder={'ネタを続けて打つ。改行で話者が交代、空白なら同じ人が続ける\n@ で始める＝ト書き　、、＝間\n^1＝音源1　^1 fo＝フェードアウト　^拍手＝SE\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
+          placeholder={'ネタを続けて打つ。改行は同じ人が続ける\n空行（改行2回）で話者が交代\n@ で始める＝ト書き　、、＝間\n^1＝音源1　^1 fo＝フェードアウト　^拍手＝SE\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -193,11 +202,8 @@ export function BatchBar(p: Props) {
       </div>
       <div className="bfoot">
         <span className="next">
-          {r.next && member(r.cast, r.next) ? (
-            <>
-              次の行：<b style={{ color: member(r.cast, r.next)?.color }}>{member(r.cast, r.next)?.name}</b>
-            </>
-          ) : null}
+          {last && <>改行→{name(last)}</>}
+          {r.next && r.next !== last && <>{last ? '　空行→' : '最初：'}{name(r.next)}</>}
         </span>
         <button className="send" onClick={send} disabled={!r.items.length}>
           台本に入れる{r.items.length ? `（${r.items.length}）` : ''}

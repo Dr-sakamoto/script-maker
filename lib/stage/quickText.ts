@@ -7,7 +7,8 @@ import type { CastMember, CueOp, Item, Role } from './types';
  * 「まとめ書き」：大きな欄に一気に打った文章を、台本の項目へ振り分ける。
  * 速く打てるよう、雑に打っても見当をつけて割り振り、外れたところはあとから直せるようにする。
  *
- * - 改行 → 話者が交代。空白（行頭でも行の途中でも） → 直前と同じ話者が続けて話す
+ * - 改行1回・空白 → 直前と同じ話者が続けて話す。空行（改行2回） → 話者が交代（切り替えるときだけ手間をかける）
+ * - 行頭に空白 → 空行のあとでも同じ話者が続ける
  * - 行の途中の空白で区切ったかたまりは別の項目になる（`どうも　@座る　疲れた` → セリフ・動き・セリフ）
  * - `1 セリフ`（数字＋空白） → その番号の役。`名前「セリフ」`・知っている `名前：セリフ` → その役
  * - `@ト書き`（Shift 要らずで、ふだん使わない記号）・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
@@ -134,8 +135,9 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     push(withId({ t: 'cue', n, op, ...(sec ? { sec } : {}), ...(x ? { x } : {}) }));
   };
 
-  const one = (raw: string) => {
-    const cont = /^[ \t　]/.test(raw);
+  /** keep：空行を挟まずに続いている（同じ人が続ける） */
+  const one = (raw: string, keep: boolean) => {
+    const cont = keep || /^[ \t　]/.test(raw);
     let l = trim(raw);
     if (!l) return;
     let m: RegExpMatchArray | null;
@@ -177,15 +179,19 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     }
   };
 
+  // 空行を挟んだら交代。最初の行は「話し始める人」（差し込む位置までの続き）から
+  let gap = true;
   text
     .replace(/\r\n?/g, '\n')
     .split('\n')
-    .forEach((raw, line) =>
+    .forEach((raw, line) => {
+      if (!trim(raw)) return void (gap = true);
       segmentsOf(raw, cast).forEach((s, seg) => {
         at = { line, seg };
-        one(s);
-      }),
-    );
+        one(s, !gap && items.length > 0);
+      });
+      if (items.length > 0) gap = false;
+    });
   return { items, rows, cast, added, next: after() };
 }
 
@@ -234,13 +240,23 @@ export function fixQuick(text: string, cast: CastMember[], ctx: QuickContext, i:
     const k = speaking.findIndex((c) => c.id === it.w);
     if (speaking.length < 2 || k < 0) return null;
     const to = speaking[(k + 1) % speaking.length];
-    let before: Role | undefined = ctx.prev;
+    let before: Role | undefined = ctx.start ? undefined : ctx.prev;
+    let inBatch = false;
     for (let j = i - 1; j >= 0; j--) {
       const p = r.items[j];
       if (p.t === 'line') {
         before = p.w;
+        inBatch = true;
         break;
       }
+    }
+    // 2人の行頭：空行を足す／消す（文章が素直なまま）
+    if (inBatch && row.seg === 0 && speaking.length === 2) {
+      segs[0] = s;
+      let k = row.line;
+      while (k > 0 && !trim(lines[k - 1])) k--;
+      const mid = to.id === before ? segs : ['', ...segs];
+      return [...lines.slice(0, k), ...mid, ...lines.slice(row.line + 1)].join('\n');
     }
     const n = speaking.indexOf(to) + 1;
     // 直前と同じ人なら「行頭の空白」、違えば番号（10人目からは 名前「…」）

@@ -11,15 +11,15 @@ const show = (items: Item[]) =>
   items.map((it) => (it.t === 'line' ? `${it.w}:${it.x}` : it.t === 'act' ? `(${it.w ?? ''}${it.x})` : it.t === 'ma' ? `ma${it.s}` : it.t));
 
 describe('まとめ書き', () => {
-  it('何も付けない行はセリフ。話者は交代する', () => {
-    const r = parseQuick('どうも\nお願いします\nいきなりだけど\n\nなに', cast, { first: 'a' });
-    expect(show(r.items)).toEqual(['a:どうも', 'b:お願いします', 'a:いきなりだけど', 'b:なに']);
-    expect(r.next).toBe('a');
+  it('改行1回は同じ人が続ける。空行（改行2回）で交代する', () => {
+    const r = parseQuick('どうも\nお願いします\n\nいきなりだけど\n\n\nなに', cast, { first: 'a' });
+    expect(show(r.items)).toEqual(['a:どうも', 'a:お願いします', 'b:いきなりだけど', 'a:なに']);
+    expect(r.next).toBe('b');
     expect(r.added).toEqual([]);
   });
 
-  it('行頭に空白を入れると、同じ人が続けて話す', () => {
-    const r = parseQuick('どうも\n　ボケです\nツッコミです', cast, { first: 'a' });
+  it('空行のあとでも、行頭に空白なら同じ人が続けて話す', () => {
+    const r = parseQuick('どうも\n\n　ボケです\n\nツッコミです', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', 'a:ボケです', 'b:ツッコミです']);
   });
 
@@ -38,7 +38,7 @@ describe('まとめ書き', () => {
   });
 
   it('番号・名前で話者を決められる。3人でも直前の2人で交代する', () => {
-    const r = parseQuick('3 いらっしゃいませ\nボケ：ラーメン\nえ\n店員「はい」\n１　もう一回', three, { first: 'a' });
+    const r = parseQuick('3 いらっしゃいませ\nボケ：ラーメン\n\nえ\n店員「はい」\n１　もう一回', three, { first: 'a' });
     expect(show(r.items)).toEqual(['c:いらっしゃいませ', 'a:ラーメン', 'c:え', 'c:はい', 'a:もう一回']);
   });
 
@@ -57,12 +57,12 @@ describe('まとめ書き', () => {
   });
 
   it('見出しに見える行も捨てない。板付き・明転は足さない', () => {
-    const r = parseQuick('衣装：スーツ\n「え', cast, { first: 'a' });
+    const r = parseQuick('衣装：スーツ\n\n「え', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:衣装：スーツ', 'b:え']);
   });
 
   it('行頭の @ はト書き（括弧を打たなくていい）', () => {
-    const r = parseQuick('どうも\n@ボケ、座る\n＠笑う　なんで\n、そうだね\n、、', cast, { first: 'a' });
+    const r = parseQuick('どうも\n@ボケ、座る\n＠笑う　なんで\n\n、そうだね\n、、', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う)', 'a:なんで', 'b:、そうだね', 'ma1']);
     expect(fixQuick('＠座る', cast, { first: 'a' }, 0, 'kind')).toBe('「座る」');
   });
@@ -79,15 +79,15 @@ describe('まとめ書き', () => {
   });
 
   it('文の中の「、、」は「……」になる。それだけの行は間', () => {
-    const r = parseQuick('いや、、なんで\n、、\n@ボケ、黙る、、\nそう、まあ', cast, { first: 'a' });
+    const r = parseQuick('いや、、なんで\n、、\n@ボケ、黙る、、\n\nそう、まあ', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:いや……なんで', 'ma1', '(a黙る……)', 'b:そう、まあ']);
   });
 
   it('話し始める人を選ぶと、直前の話者より優先する', () => {
     const before = { prev: 'a', prev2: 'b' } as const;
-    expect(show(parseQuick('どうも\nはい', cast, { first: 'a', ...before }).items)).toEqual(['b:どうも', 'a:はい']);
-    expect(show(parseQuick('どうも\nはい', cast, { first: 'a', ...before, start: 'a' }).items)).toEqual(['a:どうも', 'b:はい']);
-    expect(show(parseQuick('いらっしゃい\nえ\nはい', three, { first: 'a', start: 'c' }).items)).toEqual(['c:いらっしゃい', 'a:え', 'c:はい']);
+    expect(show(parseQuick('どうも\n\nはい', cast, { first: 'a', ...before }).items)).toEqual(['b:どうも', 'a:はい']);
+    expect(show(parseQuick('どうも\n\nはい', cast, { first: 'a', ...before, start: 'a' }).items)).toEqual(['a:どうも', 'b:はい']);
+    expect(show(parseQuick('いらっしゃい\n\nえ\n\nはい', three, { first: 'a', start: 'c' }).items)).toEqual(['c:いらっしゃい', 'a:え', 'c:はい']);
   });
 
   it('ピンは同じ人が話し続ける', () => {
@@ -97,10 +97,10 @@ describe('まとめ書き', () => {
 });
 
 describe('まとめ書き：雑に打った文章', () => {
-  it('行の途中の空白も、同じ人が続けて話す（交代は改行だけ）', () => {
-    const r = parseQuick('どうも　お願いします　いきなりだけど\nなに', cast, { first: 'a' });
+  it('行の途中の空白も、同じ人が続けて話す（交代は空行だけ）', () => {
+    const r = parseQuick('どうも　お願いします　いきなりだけど\n\nなに', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', 'a:お願いします', 'a:いきなりだけど', 'b:なに']);
-    expect(r.rows).toEqual([{ line: 0, seg: 0 }, { line: 0, seg: 1 }, { line: 0, seg: 2 }, { line: 1, seg: 0 }]);
+    expect(r.rows).toEqual([{ line: 0, seg: 0 }, { line: 0, seg: 1 }, { line: 0, seg: 2 }, { line: 2, seg: 0 }]);
   });
 
   it('句点では分けない', () => {
@@ -114,7 +114,7 @@ describe('まとめ書き：雑に打った文章', () => {
   });
 
   it('役名で始まっても、セリフらしいものはセリフのまま', () => {
-    const r = parseQuick('ボケが悪いんだろ！\nツッコミは俺？', cast, { first: 'a' });
+    const r = parseQuick('ボケが悪いんだろ！\n\nツッコミは俺？', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:ボケが悪いんだろ！', 'b:ツッコミは俺？']);
   });
 
@@ -128,17 +128,20 @@ describe('まとめ書き：割り振りを直す', () => {
   const ctx = { first: 'a' };
   const after = (text: string) => show(parseQuick(text, cast, ctx).items);
 
-  it('話者を替えると、続きの交代もそれに合わせて変わる', () => {
-    const t = fixQuick('どうも\nボケです\nツッコミです\nお願いします', cast, ctx, 1, 'speaker')!;
-    expect(t).toBe('どうも\n　ボケです\nツッコミです\nお願いします');
+  it('話者を替えると空行を足す／消す。続きの交代もそれに合わせて変わる', () => {
+    const src = 'どうも\n\nボケです\n\nツッコミです\n\nお願いします';
+    const t = fixQuick(src, cast, ctx, 1, 'speaker')!;
+    expect(t).toBe('どうも\nボケです\n\nツッコミです\n\nお願いします');
     expect(after(t)).toEqual(['a:どうも', 'a:ボケです', 'b:ツッコミです', 'a:お願いします']);
     // もう一度替えると元の話者に戻る
-    expect(after(fixQuick(t, cast, ctx, 1, 'speaker')!)).toEqual(['a:どうも', 'b:ボケです', 'a:ツッコミです', 'b:お願いします']);
+    expect(fixQuick(t, cast, ctx, 1, 'speaker')).toBe(src);
+    // 3人以上は番号で決める
+    expect(fixQuick('どうも\nはい', three, ctx, 1, 'speaker')).toBe('どうも\n2 はい');
   });
 
   it('最初の行は番号で決める', () => {
-    const t = fixQuick('どうも\nはい', cast, ctx, 0, 'speaker')!;
-    expect(t).toBe('2 どうも\nはい');
+    const t = fixQuick('どうも\n\nはい', cast, ctx, 0, 'speaker')!;
+    expect(t).toBe('2 どうも\n\nはい');
     expect(after(t)).toEqual(['b:どうも', 'a:はい']);
   });
 
@@ -146,7 +149,7 @@ describe('まとめ書き：割り振りを直す', () => {
     const t = fixQuick('どうも\n椅子に座る', cast, ctx, 1, 'kind')!;
     expect(t).toBe('どうも\n@椅子に座る');
     expect(after(t)).toEqual(['a:どうも', '(椅子に座る)']);
-    expect(after(fixQuick(t, cast, ctx, 1, 'kind')!)).toEqual(['a:どうも', 'b:椅子に座る']);
+    expect(after(fixQuick(t, cast, ctx, 1, 'kind')!)).toEqual(['a:どうも', 'a:椅子に座る']);
     // 動きに見えてしまったセリフを、セリフに決める
     const u = fixQuick('ツッコミは俺がやる', cast, ctx, 0, 'kind')!;
     expect(u).toBe('「ツッコミは俺がやる」');
@@ -164,7 +167,7 @@ describe('まとめ書き：割り振りを直す', () => {
     const t = fixQuick('どうも　椅子に座る　疲れた', cast, ctx, 1, 'kind')!;
     expect(t).toBe('どうも\n@椅子に座る\n　疲れた');
     expect(after(t)).toEqual(['a:どうも', '(椅子に座る)', 'a:疲れた']);
-    expect(after(fixQuick(t, cast, ctx, 1, 'kind')!)).toEqual(['a:どうも', 'b:椅子に座る', 'b:疲れた']);
+    expect(after(fixQuick(t, cast, ctx, 1, 'kind')!)).toEqual(['a:どうも', 'a:椅子に座る', 'a:疲れた']);
     expect(after(fixQuick('どうも　疲れた', cast, ctx, 1, 'speaker')!)).toEqual(['a:どうも', 'b:疲れた']);
   });
 
