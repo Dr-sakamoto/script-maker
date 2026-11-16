@@ -81,6 +81,7 @@ describe('まとめ書き', () => {
   it('文の中の「、、」は「……」になる。それだけの行は間', () => {
     const r = parseQuick('いや、、なんで\n、、\n@ボケ、黙る、、\nそう、まあ', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:いや……なんで', 'ma1', '(a黙る……)', 'b:そう、まあ']);
+    expect(show(parseQuick('え、、、、うそ', cast, { first: 'a' }).items)).toEqual(['a:え…………うそ']);
   });
 
   it('話し始める人を選ぶと、直前の話者より優先する', () => {
