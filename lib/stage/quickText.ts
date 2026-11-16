@@ -7,18 +7,21 @@ import type { CastMember, CueOp, Item, Role } from './types';
  * 「まとめ書き」：大きな欄に一気に打った文章を、台本の項目へ振り分ける。
  * 速く打てるよう、雑に打っても見当をつけて割り振り、外れたところはあとから直せるようにする。
  *
- * - 何も付けない行 → セリフ（話者は交代）。行頭に空白 → 直前と同じ話者が続けて話す
- * - 改行していなくても、空白で区切ってあれば話者を替える。長い文のかたまりは「。！？」でも分ける
+ * - 改行 → 話者が交代。空白（行頭でも行の途中でも） → 直前と同じ話者が続けて話す
+ * - 行の途中の空白で区切ったかたまりは別の項目になる（`どうも　@座る　疲れた` → セリフ・動き・セリフ）
  * - `1 セリフ`（数字＋空白） → その番号の役。`名前「セリフ」`・知っている `名前：セリフ` → その役
  * - `@ト書き`（Shift 要らずで、ふだん使わない記号）・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
  * - `^1` → 音源1 を出す（`^1 fo 3秒`＝フェードアウト、`^2 出囃子`＝名前付き）。`^拍手`（番号なし）→ SE
- * - `、、`・`・・`・`間` → 間。`明転`・`暗転`・`SE：拍手`・`【…】` などは台本の読み込みと同じ（importText.ts）
+ * - `、、`・`・・`・`間`（それだけの行） → 間。文の中の `、、` → `……`（`いや、、なんで` → `いや……なんで`）
+ * - `明転`・`暗転`・`SE：拍手`・`【…】` などは台本の読み込みと同じ（importText.ts）
  *
  * 直すときは文章のほうを書き換える（fixQuick）。文章がいつも正で、直した結果もそのまま文章に残る。
  */
 export type QuickContext = {
   /** 話者がまだ決まっていないときの最初の話者 */
   first?: Role;
+  /** この人から話し始める（選んだとき。差し込む位置までの話者より優先） */
+  start?: Role;
   /** 直前に話した役と、その前に話した別の役（差し込む位置までの台本から） */
   prev?: Role;
   prev2?: Role;
@@ -54,14 +57,9 @@ const DIGITS = '１２３４５６７８９';
 const OPEN = /^[（(【［\[]/;
 const trim = (s: string) => s.replace(/^[\s　]+|[\s　]+$/g, '');
 const known = (cast: CastMember[], name: string) => cast.some((c) => c.name === name || (c.mark && c.mark === name));
-/** 「。！？」で分けるのは、これより長い文のかたまりだけ（短い行は1人が続けて話したものと見る） */
-const BLOB = 40;
-
 /**
- * 1行を、話者が替わりそうなところで分ける。
- * - 空白（日本語どうしの間）は区切り
- * - 長い文のかたまり（改行なしで続けて打った・音声入力）は「。！？」でも分ける
- * 書式のある行（括弧・番号・名前：…）は分けない。行頭の空白（同じ人が続ける印）は最初のかたまりに残す
+ * 1行を、行の途中の空白（日本語どうしの間）で分ける。2つ目からのかたまりは「同じ人が続ける」印の空白を頭に付ける。
+ * 書式のある行（括弧・番号・名前：…）は分けない。行頭の空白は最初のかたまりに残す
  */
 export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
   const body = trim(raw);
@@ -71,13 +69,11 @@ export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
   if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [raw];
   const head = body.match(new RegExp(`^(${NAME})[ \\u3000]`));
   if (head && known(cast, head[1])) return [raw];
-
-  let parts = body.split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/);
-  const ends = body.match(/[。！？!?]+(?=[^。！？!?」』）)\s])/g)?.length ?? 0;
-  if (body.length > BLOB && ends >= 2)
-    parts = parts.flatMap((p) => (/[「（(『]/.test(p) ? [p] : p.split(/(?<=[。！？!?])(?=[^。！？!?」』）)\s])/)));
-  parts = parts.map(trim).filter(Boolean);
-  return parts.map((p, i) => (i === 0 ? lead + p : p));
+  const parts = body
+    .split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/)
+    .map(trim)
+    .filter(Boolean);
+  return parts.map((p, i) => (i === 0 ? lead + p : `　${p}`));
 }
 
 export function parseQuick(text: string, base: CastMember[], ctx: QuickContext = {}): QuickResult {
@@ -85,7 +81,7 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
   const added: Role[] = [];
   const items: Item[] = [];
   const rows: QuickRow[] = [];
-  let { prev, prev2 } = ctx;
+  let { prev, prev2 } = ctx.start ? {} : ctx;
   let at: QuickRow = { line: 0, seg: 0 };
   const push = (it: Item) => {
     items.push(it);
@@ -94,7 +90,7 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
 
   /** prev の次に話す役：その前に話していた役。いなければ隣の人形 */
   const after = (): Role | undefined => {
-    if (!prev) return ctx.first ?? puppets(cast)[0]?.id;
+    if (!prev) return ctx.start ?? ctx.first ?? puppets(cast)[0]?.id;
     if (prev2 && member(cast, prev2)) return prev2;
     const ps = puppets(cast).map((c) => c.id);
     const i = ps.indexOf(prev);
@@ -147,6 +143,8 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     // 間：、、／・・／‥（打った数だけ長く）／間
     if ((m = l.match(/^(?:([、,，・.．。])\1+|‥+|…+)$/))) return void push(withId({ t: 'ma', s: m[1] ? l.length - 1 : l.length }));
     if (l === '間') return void push(withId({ t: 'ma', s: 1 }));
+    // 文の中の「、、」は「……」に（打ちやすい読点で三点リーダーを書く）
+    l = l.replace(/[、,，]{2,}/g, '……');
     // 行頭に ^ → 音：番号があれば音源、なければ SE
     if ((m = l.match(/^[\^＾][\s　]*(.*)$/))) return sound(m[1]);
     // 行頭に @ → ト書き（Shift の要る括弧を打たずに済む）
@@ -225,7 +223,8 @@ export function fixQuick(text: string, cast: CastMember[], ctx: QuickContext, i:
 
   if (fix === 'kind') {
     // 動きに見えてしまうセリフは「」で包んで、セリフだと決める
-    segs[row.seg] = it.t === 'line' ? `@${s}` : `「${trim(segs[row.seg]).replace(/^[@＠（(]|[）)]$/g, '')}」`;
+    const lead = segs[row.seg].match(/^[ \t　]*/)?.[0] ?? '';
+    segs[row.seg] = it.t === 'line' ? `@${s}` : `${lead}「${trim(segs[row.seg]).replace(/^[@＠（(]|[）)]$/g, '')}」`;
     return put(segs);
   }
 

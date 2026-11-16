@@ -752,13 +752,38 @@
   font-weight: 700;
   scrollbar-width: none;
 }
-.batchbar .nums span {
+.batchbar .nums {
+  align-items: center;
+  gap: 6px;
+}
+.batchbar .nums em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--sub);
+  font-size: 12px;
+}
+/* 話し始める人：押して選ぶ。選んだ人は塗りつぶし */
+.batchbar .nums button {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--c, var(--line));
   color: var(--c, var(--ink));
+  background: none;
+  font: inherit;
+}
+.batchbar .nums button.on {
+  background: var(--c, var(--ink));
+  color: #fff;
+}
+.batchbar .nums button:disabled {
+  border-color: transparent;
+  padding-inline: 0;
 }
 .batchbar .nums i {
   font-style: normal;
   font-weight: 400;
-  color: var(--sub);
+  opacity: 0.7;
   margin-right: 3px;
 }
 .batchbar .one {
