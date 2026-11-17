@@ -198,3 +198,14 @@ export function swapFirst(items: Item[], to: Role): Item[] {
   if (!from || from === to) return items;
   return items.map((it) => (it.t === 'line' && (it.w === from || it.w === to) ? { ...it, w: it.w === from ? to : from } : it));
 }
+
+/**
+ * 「最初」：まだセリフが無いときは、役の並びで選んだ人を先頭へ（何も付けずに打つと最初に話す人＝並びの先頭の人形）。
+ * セリフがあれば並びはそのまま（null）
+ */
+export function firstInCast(cast: CastMember[], items: Item[], to: Role): CastMember[] | null {
+  if (items.some((it) => it.t === 'line')) return null;
+  const m = member(cast, to);
+  if (!m || m.kind !== 'puppet' || puppets(cast)[0]?.id === to) return null;
+  return [m, ...cast.filter((c) => c.id !== to)];
+}

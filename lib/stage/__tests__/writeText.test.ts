@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chichiDoc } from '../chichi';
 import type { CastMember, Doc, Item } from '../types';
-import { docToText, joinPrev, setSpeaker, swapFirst, textToItems, toggleKind } from '../writeText';
+import { docToText, firstInCast, joinPrev, setSpeaker, swapFirst, textToItems, toggleKind } from '../writeText';
 
 const cast: CastMember[] = [
   { id: 'a', name: 'ボケ', short: 'ボ', color: '#111', kind: 'puppet' },
@@ -114,5 +114,11 @@ describe('かく：プレビューから直す（その行だけ）', () => {
   });
   it('最初に話す人を替えると、全部のセリフで入れ替わる', () => {
     expect(show(swapFirst(items, 'b'))).toEqual(['b:どうも', '(座る)', 'a:はい', 'b:それで']);
+  });
+  it('最初：セリフが無いときは役の並びを入れ替える', () => {
+    expect(firstInCast(cast, [], 'b')?.map((c) => c.id)).toEqual(['b', 'a', 'c', 'e']);
+    expect(firstInCast(cast, [], 'a')).toBeNull();
+    expect(firstInCast(cast, [], 'e')).toBeNull();
+    expect(firstInCast(cast, [{ id: '1', t: 'line', w: 'a', x: 'どうも' }], 'b')).toBeNull();
   });
 });
