@@ -11,7 +11,7 @@ import type { ScriptItem, Unit } from '../../lib/types';
 import { docFromScript, scriptWithDoc } from '../../lib/stage/bridge';
 import { MARKS, member, PALETTE, puppets, shortName } from '../../lib/stage/cast';
 import { insertAfter, mergePrev, moveBefore, moveRow, removeItem, splitBody, touch, uid, updateItem, type Edit } from '../../lib/stage/edit';
-import { docToText, joinPrev, setSpeaker, swapFirst, textToItems, toggleKind, type Synced } from '../../lib/stage/writeText';
+import { docToText, firstInCast, joinPrev, setSpeaker, swapFirst, textToItems, toggleKind, type Synced } from '../../lib/stage/writeText';
 import { templateFor } from '../../lib/stage/templates';
 import { histReducer, initHist } from '../../lib/stage/history';
 import { parseScriptText, type ImportResult } from '../../lib/stage/importText';
@@ -786,7 +786,12 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
               onSpeaker={onWriteSpeaker}
               onKind={(id) => fixItems(toggleKind(cast, ref.current.doc.items, id))}
               onJoin={(id) => fixItems(joinPrev(ref.current.doc.items, id))}
-              onFirst={(w) => fixItems(swapFirst(ref.current.doc.items, w))}
+              onFirst={(w) => {
+                const d = ref.current.doc;
+                const c = firstInCast(d.cast, d.items, w);
+                if (c) dispatch({ type: 'commit', doc: { ...d, cast: c } });
+                else fixItems(swapFirst(d.items, w));
+              }}
               onAddRole={onAddPuppet}
               template={templateFor(doc.genre, cast) ? doc.genre : undefined}
               onTemplate={onTemplate}
