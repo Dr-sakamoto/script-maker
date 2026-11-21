@@ -5,16 +5,32 @@ const STORAGE_KEYS = {
   SCRIPTS: 'script_maker_scripts',
 };
 
-export function loadLocalUnits(): Unit[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem(STORAGE_KEYS.UNITS);
+/**
+ * 保存データを読む。読めなかった（壊れている・形が違う）ときは、あとで上書きして消してしまわないよう、
+ * 元の文字列をそのまま別のキーに取っておく（アプリを更新したあとでも手で取り出せる）
+ */
+function readList<T>(key: string): T[] {
+  const stored = localStorage.getItem(key);
   if (!stored) return [];
   try {
-    return JSON.parse(stored);
+    const data = JSON.parse(stored);
+    if (Array.isArray(data)) return data as T[];
+    throw new Error('not an array');
   } catch (e) {
-    console.error('Failed to parse local units', e);
+    console.error(`Failed to parse ${key}`, e);
+    try {
+      // 先に取っておいた分があれば、それを上書きしない
+      if (localStorage.getItem(`${key}:unreadable`) == null) localStorage.setItem(`${key}:unreadable`, stored);
+    } catch {
+      /* 容量がいっぱいなら、元のデータをそのまま残す */
+    }
     return [];
   }
+}
+
+export function loadLocalUnits(): Unit[] {
+  if (typeof window === 'undefined') return [];
+  return readList<Unit>(STORAGE_KEYS.UNITS);
 }
 
 /** 保存できたら true。容量がいっぱい・保存が禁止されているときは false（例外は投げない） */
@@ -31,14 +47,7 @@ export function saveLocalUnits(units: Unit[]): boolean {
 
 export function loadLocalScripts(): ScriptItem[] {
   if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem(STORAGE_KEYS.SCRIPTS);
-  if (!stored) return [];
-  try {
-    return JSON.parse(stored);
-  } catch (e) {
-    console.error('Failed to parse local scripts', e);
-    return [];
-  }
+  return readList<ScriptItem>(STORAGE_KEYS.SCRIPTS);
 }
 
 /** 保存できたら true。容量がいっぱい・保存が禁止されているときは false（例外は投げない） */
