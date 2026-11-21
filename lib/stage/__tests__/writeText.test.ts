@@ -29,9 +29,10 @@ describe('かく：台本 → 文章', () => {
       { id: '6', t: 'line', w: 'e', x: 'ピヨ' },
       { id: '7', t: 'act', w: 'a', x: '座る' },
       { id: '8', t: 'act', x: '二人　顔を見合わせる' },
+      { id: '9', t: 'act', x: 'a@b' },
     ]);
     const r = reread(d);
-    expect(r.text.split('\n')).toEqual(['どうも', 'お願いします', '　いきなりだけど', '3 いらっしゃいませ', '1 ラーメン', '4 ピヨ', '@ボケ、座る', '@二人　顔を見合わせる']);
+    expect(r.text.split('\n')).toEqual(['どうも', 'お願いします', '　いきなりだけど', '3 いらっしゃいませ', '1 ラーメン', '4 ピヨ', '@ボケ、座る', '（二人　顔を見合わせる）', '（a@b）']);
     expect(strip(r.items)).toEqual(strip(d.items));
   });
 

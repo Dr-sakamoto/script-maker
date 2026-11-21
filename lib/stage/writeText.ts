@@ -19,7 +19,7 @@ export type Synced = {
 };
 
 const SPECIAL_HEAD = /^[@＠^＾（(【［\[『■1-9１-９]/;
-const PLAIN_BAD = /[\s　：:「」『』]|[、,，]{2}/;
+const PLAIN_BAD = /[\s　：:「」『』@＠^＾]|[、,，]{2}/;
 
 /** 何も付けずに書いても、そのままのセリフに読める文か */
 function plain(x: string, cast: CastMember[]): boolean {
@@ -84,7 +84,11 @@ export function docToText(doc: Doc): { text: string; synced: Synced } {
       }
       return l;
     }
-    if (it.t === 'act') return `@${it.w ? `${nameOf(cast, it.w)}、` : ''}${it.x}`;
+    if (it.t === 'act') {
+      const body = `${it.w ? `${nameOf(cast, it.w)}、` : ''}${it.x}`;
+      // @ の動きは空白や @ ^ で区切られるので、そういう文字を含む動きは（ ）で包んで1つのまま残す
+      return /[@＠^＾]|(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/.test(body) ? `（${body}）` : `@${body}`;
+    }
     const before = i > 0 ? states[i - 1] : init;
     if (it.t === 'move' && it.in && classifyMove(before, it) === 'board') return `【板付き】${nameOf(cast, it.w)}（${areaOf(it.x)}）`;
     return lineOfItem(doc, i, false) ?? `（${it.t}）`;

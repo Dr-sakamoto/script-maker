@@ -48,12 +48,12 @@ describe('まとめ書き', () => {
     expect(r.items[4]).toMatchObject({ on: true, fade: 3 });
   });
 
-  it('知らない名前の「：」は役にしない。名前「…」は役を足す', () => {
-    const r = parseQuick('結論：やめとけ\n10:30に集合\n客「すみません」', cast, { first: 'a' });
-    expect(r.items.slice(0, 2).map((it) => (it.t === 'line' ? it.x : ''))).toEqual(['結論：やめとけ', '10:30に集合']);
-    expect(r.added).toHaveLength(1);
-    expect(r.cast.at(-1)?.name).toBe('客');
-    expect(r.items[2]).toMatchObject({ t: 'line', w: r.added[0], x: 'すみません' });
+  it('知らない名前の「：」・「…」は役にしない（役は「＋」で足す）。知っている名前の 名前「…」はその役', () => {
+    const r = parseQuick('結論：やめとけ\n10:30に集合\n客「すみません」\nボケ「はい」', cast, { first: 'a' });
+    expect(r.items.slice(0, 3).map((it) => (it.t === 'line' ? it.x : ''))).toEqual(['結論：やめとけ', '10:30に集合', '客「すみません」']);
+    expect(r.added).toHaveLength(0);
+    expect(r.cast).toHaveLength(cast.length);
+    expect(r.items[3]).toMatchObject({ t: 'line', x: 'はい' });
   });
 
   it('見出しに見える行も捨てない。板付き・明転は足さない', () => {
@@ -63,9 +63,18 @@ describe('まとめ書き', () => {
 
   it('行頭の @ はト書き（括弧を打たなくていい）', () => {
     const r = parseQuick('どうも\n@ボケ、座る\n＠笑う　なんで\n、そうだね\n、、', cast, { first: 'a' });
-    expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う　なんで)', 'b:、そうだね', 'a:……']);
-    // 行頭の @ の行は空白で分けない
-    expect(show(parseQuick('@二人　顔を見合わせる', cast, { first: 'a' }).items)).toEqual(['(二人　顔を見合わせる)']);
+    expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う)', 'a:なんで', 'b:、そうだね', 'a:……']);
+    // @ は次の空白までが動き。そのあとは、同じ人のセリフに戻る
+    expect(show(parseQuick('@二人　顔を見合わせる', cast, { first: 'a' }).items)).toEqual(['(二人)', 'a:顔を見合わせる']);
+  });
+
+  it('@ と ^ は行の途中でも効く。（ ）はセリフの演技のまま、@ から新しい動き', () => {
+    expect(show(parseQuick('どうも@座る　疲れた', cast, { first: 'a' }).items)).toEqual(['a:どうも', '(座る)', 'a:疲れた']);
+    expect(show(parseQuick('どうも（笑って）　ええ @立つ 次', cast, { first: 'a' }).items)).toEqual(['a:どうも（笑って）', 'a:ええ', '(立つ)', 'a:次']);
+    const r = parseQuick('どうも ^拍手 ありがとう\nはい^2 出囃子', cast, { first: 'a' });
+    expect(r.items.map((it) => it.t)).toEqual(['line', 'se', 'line', 'line', 'cue']);
+    expect(r.items[1]).toMatchObject({ t: 'se', x: '拍手' });
+    expect(r.items[4]).toMatchObject({ t: 'cue', n: 2 });
   });
 
   it('行頭の ^ は音：番号があれば音源、なければ SE', () => {

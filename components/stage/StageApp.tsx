@@ -393,7 +393,7 @@ export default function StageApp({ script, unit }: { script: ScriptItem; unit?: 
     const w = docToText(ref.current.doc);
     setWritten({ ...w, items, cast });
   }, [items, cast, written.items, written.cast]);
-  /** 文章で足した役（名前「…」）。使わなくなったら消す（打ちかけの名前を役に残さない） */
+  /** 文章で足した役（「登場人物：」）。使わなくなったら消す（打ちかけの名前を役に残さない） */
   const textRoles = useRef(new Set<Role>());
   const typedAt = useRef({ t: 0, n: 0 });
   const onWrite = (text: string) => {
