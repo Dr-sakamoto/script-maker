@@ -126,7 +126,7 @@ export function Writer(p: Props) {
           }}
           onSelect={follow}
           spellCheck={false}
-          placeholder={'ネタを続けて打つ。改行で話者が交代、空白なら同じ人が続ける\n@ から次の空白まで＝ト書き（行の途中でも）　、、＝……\n^1＝音源1　^1 fo＝フェードアウト　^拍手＝SE（これも途中でも）\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
+          placeholder={'ネタを続けて打つ。改行で話者が交代、空白なら同じ人が続ける\n行頭の @＝ト書き（途中の @なく＝直前のセリフの（なく））　、、＝……\n^1＝音源1　^1 fo＝フェードアウト　^拍手＝SE（途中でも）\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
         />
         <ol className="bprev" ref={prev} aria-label="台本">
           {p.items.length === 0 && (

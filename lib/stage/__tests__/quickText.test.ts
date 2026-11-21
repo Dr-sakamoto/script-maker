@@ -64,13 +64,15 @@ describe('まとめ書き', () => {
   it('行頭の @ はト書き（括弧を打たなくていい）', () => {
     const r = parseQuick('どうも\n@ボケ、座る\n＠笑う　なんで\n、そうだね\n、、', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う)', 'a:なんで', 'b:、そうだね', 'a:……']);
-    // @ は次の空白までが動き。そのあとは、同じ人のセリフに戻る
+    // 行頭の @ は次の空白までが動き。そのあとは、同じ人のセリフに戻る
     expect(show(parseQuick('@二人　顔を見合わせる', cast, { first: 'a' }).items)).toEqual(['(二人)', 'a:顔を見合わせる']);
   });
 
-  it('@ と ^ は行の途中でも効く。（ ）はセリフの演技のまま、@ から新しい動き', () => {
-    expect(show(parseQuick('どうも@座る　疲れた', cast, { first: 'a' }).items)).toEqual(['a:どうも', '(座る)', 'a:疲れた']);
-    expect(show(parseQuick('どうも（笑って）　ええ @立つ 次', cast, { first: 'a' }).items)).toEqual(['a:どうも（笑って）', 'a:ええ', '(立つ)', 'a:次']);
+  it('行の途中の @ は直前のセリフの（ ）。別の動きになるのは行頭の @ だけ。^ は途中でも新しい音', () => {
+    expect(show(parseQuick('どうも@座る　疲れた', cast, { first: 'a' }).items)).toEqual(['a:どうも（座る）', 'a:疲れた']);
+    expect(show(parseQuick('もう！だからおれじゃないってぇ　りゅうきがいっただけじゃん＠なく', cast, { first: 'a' }).items)).toEqual(['a:もう！だからおれじゃないってぇ', 'a:りゅうきがいっただけじゃん（なく）']);
+    expect(show(parseQuick('りゅうきが＠なく＠笑う', cast, { first: 'a' }).items)).toEqual(['a:りゅうきが（なく）（笑う）']);
+    expect(show(parseQuick('りゅうきが\n＠なく', cast, { first: 'a' }).items)).toEqual(['a:りゅうきが', '(なく)']);
     const r = parseQuick('どうも ^拍手 ありがとう\nはい^2 出囃子', cast, { first: 'a' });
     expect(r.items.map((it) => it.t)).toEqual(['line', 'se', 'line', 'line', 'cue']);
     expect(r.items[1]).toMatchObject({ t: 'se', x: '拍手' });
@@ -136,7 +138,7 @@ describe('まとめ書き：雑に打った文章', () => {
 
   it('（ ）の行は分けない。番号の行は、番号を最初に残して分ける（＠ も効く）', () => {
     const r = parseQuick('（ボケ、立つ。　そして座る）\n1 どうも　ボケです＠頭をかく', cast, { first: 'b' });
-    expect(show(r.items)).toEqual(['(a立つ。　そして座る)', 'a:どうも', 'a:ボケです', '(頭をかく)']);
-    expect(show(parseQuick('2 もう！だからおれじゃないってぇ　りゅうきがいっただけじゃん＠なく', cast, { first: 'a' }).items)).toEqual(['b:もう！だからおれじゃないってぇ', 'b:りゅうきがいっただけじゃん', '(なく)']);
+    expect(show(r.items)).toEqual(['(a立つ。　そして座る)', 'a:どうも', 'a:ボケです（頭をかく）']);
+    expect(show(parseQuick('2 もう！だからおれじゃないってぇ　りゅうきがいっただけじゃん＠なく', cast, { first: 'a' }).items)).toEqual(['b:もう！だからおれじゃないってぇ', 'b:りゅうきがいっただけじゃん（なく）']);
   });
 });
