@@ -1,9 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { member } from '../../lib/stage/cast';
+import { cueWarnings, writeToken, type Dir } from '../../lib/stage/cueToken';
+import { cueText, lightText } from '../../lib/stage/export';
 import { initialState } from '../../lib/stage/state';
 import type { CastMember, Item, Role } from '../../lib/stage/types';
 import type { Synced } from '../../lib/stage/writeText';
 import { chipLook } from './chips';
+import { caretXY, CuePop, tokenNear, type TokenHit } from './CuePop';
 
 type Props = {
   cast: CastMember[];
@@ -74,6 +77,118 @@ export function Writer(p: Props) {
   };
   useEffect(follow, [p.text, p.synced]);
 
+  // --- ・m1・・l の吹き出し
+  const latest = useRef(p);
+  latest.current = p;
+  const [pop, setPop] = useState<{ hit: TokenHit; focus: boolean; x: number; y: number } | null>(null);
+  /** 選んだあと・閉じたあとは、カーソルがいったん離れるまで幽霊を出さない */
+  const hide = useRef(-1);
+  const timer = useRef<number | undefined>(undefined);
+  /** 吹き出しで今の向き：その行の台本の項目から（向きを書いていなければ、流れで決まった向き） */
+  const dirOf = (hit: TokenHit): Dir => {
+    if (hit.tk.dir) return hit.tk.dir;
+    const row = latest.current.synced.byLine[hit.line] ?? [];
+    const same = row.filter((it) => (hit.tk.kind === 'cue' ? it.t === 'cue' : it.t === 'light' && !it.p));
+    const it = same[hit.nth];
+    if (it?.t === 'cue') return it.op === 'C.I' || it.op === 'F.I' ? 'in' : 'out';
+    if (it?.t === 'light') return it.on ? 'in' : 'out';
+    return 'in';
+  };
+  const openAt = (pos: number, focus: boolean) => {
+    const el = area.current;
+    if (!el) return;
+    const hit = tokenNear(el.value, pos);
+    if (!hit) return void setPop(null);
+    const xy = caretXY(el, hit.end);
+    const w = el.clientWidth;
+    setPop({ hit, focus, x: Math.max(4, Math.min(xy.x - 20, w - 236)), y: Math.min(xy.y + 4, el.clientHeight - 8) });
+  };
+  /** 打ったばかりの ・m1・・l（向きが書いていない）：少し待ってから、秒数の欄にカーソルを合わせて出す */
+  const afterType = (el: HTMLTextAreaElement) => {
+    clearTimeout(timer.current);
+    const pos = el.selectionStart;
+    const hit = tokenNear(el.value, pos);
+    if (hit && pos === hit.end && !hit.tk.dir) timer.current = window.setTimeout(() => openAt(pos, true), 450);
+  };
+  /** カーソルが ・m1・・l に近づいたら、幽霊のように薄く出す */
+  const ghostAt = (el: HTMLTextAreaElement) => {
+    if (el.selectionStart !== el.selectionEnd) return;
+    const hit = tokenNear(el.value, el.selectionStart);
+    if (!hit) {
+      hide.current = -1;
+      if (pop && !pop.focus) setPop(null);
+      return;
+    }
+    if (hit.start === hide.current || pop?.hit.start === hit.start) return;
+    openAt(el.selectionStart, false);
+  };
+  const pick = (dir: Dir, sec: number) => {
+    const el = area.current;
+    if (!el || !pop) return;
+    const { hit } = pop;
+    const tok = writeToken(hit.tk.head, dir, sec, hit.tk.kind === 'cue' ? hit.tk.name : undefined);
+    const next = el.value.slice(0, hit.start) + tok + el.value.slice(hit.end);
+    hide.current = hit.start;
+    sel.current = hit.start + tok.length;
+    setPop(null);
+    el.focus();
+    p.onText(next);
+  };
+  const closePop = () => {
+    if (pop) hide.current = pop.hit.start;
+    setPop(null);
+    if (pop?.focus) area.current?.focus();
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  // --- 清書：矛盾の指摘と、同じ行のきっかけのマーカー
+  const warns = useMemo(() => cueWarnings(p.items), [p.items]);
+  const warnOf = useMemo(() => new Map(warns.map((w) => [w.id, w.msg])), [warns]);
+  /** i 番目のセリフ・動きのあとに続く、同じ行に書いた音源・照明のきっかけ */
+  const marksOf = (i: number) => {
+    const out: { k: string; cls: 'snd' | 'lgt' }[] = [];
+    for (let j = i + 1; j < p.items.length; j++) {
+      const it = p.items[j];
+      if (it.t !== 'cue' && it.t !== 'light') break;
+      if (it.k) out.push({ k: it.k, cls: it.t === 'cue' ? 'snd' : 'lgt' });
+    }
+    return out;
+  };
+  /** 文にマーカーを引く（音源＝青緑、照明＝黄。両方なら両方の色） */
+  const marked = (text: string, marks: { k: string; cls: 'snd' | 'lgt' }[]) => {
+    const ranges: { s: number; e: number; cls: Set<string> }[] = [];
+    for (const m of marks) {
+      const s0 = text.lastIndexOf(m.k);
+      if (s0 < 0) continue;
+      const hit = ranges.find((r) => r.s === s0 && r.e === s0 + m.k.length);
+      if (hit) hit.cls.add(m.cls);
+      else if (!ranges.some((r) => s0 < r.e && r.s < s0 + m.k.length)) ranges.push({ s: s0, e: s0 + m.k.length, cls: new Set([m.cls]) });
+    }
+    if (!ranges.length) return text;
+    ranges.sort((a, b) => a.s - b.s);
+    const out: React.ReactNode[] = [];
+    let at = 0;
+    ranges.forEach((r, n) => {
+      if (r.s > at) out.push(text.slice(at, r.s));
+      out.push(
+        <mark key={n} className={`mk ${r.cls.size > 1 ? 'both' : [...r.cls][0]}`}>
+          {text.slice(r.s, r.e)}
+        </mark>,
+      );
+      at = r.e;
+    });
+    if (at < text.length) out.push(text.slice(at));
+    return out;
+  };
+  const showItem = (id: string) => {
+    const li = prev.current?.querySelector<HTMLElement>(`[data-id="${id}"]`);
+    if (!li || !prev.current) return;
+    prev.current.scrollTop = li.offsetTop - prev.current.offsetTop - prev.current.clientHeight / 3;
+    li.classList.remove('flash');
+    void li.offsetWidth;
+    li.classList.add('flash');
+  };
+
   const label = (it: Item) => {
     if (it.t === 'move') return `${member(p.cast, it.w)?.name ?? '?'} ${it.in ? '出' : 'ハケ'}`;
     return chipLook(p.cast, it, init).text;
@@ -116,19 +231,37 @@ export function Writer(p: Props) {
         </button>
       </div>
       <div className="bbody">
-        <textarea
-          ref={area}
-          value={p.text}
-          onChange={(e) => {
-            typed.current = e.target.value;
-            sel.current = e.target.selectionStart;
-            p.onText(e.target.value);
-          }}
-          onSelect={follow}
-          spellCheck={false}
-          placeholder={'ネタを続けて打つ。改行で話者が交代、空白なら同じ人が続ける\n行頭の @＝ト書き（途中の @なく＝直前のセリフの（なく））　、、＝……\n^m＝明転　^あ＝暗転　^1＝音源1　^1あ＝アウト　^1い5＝5秒かけてイン　^拍手＝SE\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
-        />
+        <div className="wbox">
+          <textarea
+            ref={area}
+            value={p.text}
+            onChange={(e) => {
+              typed.current = e.target.value;
+              sel.current = e.target.selectionStart;
+              p.onText(e.target.value);
+              if (!(e.nativeEvent as InputEvent).isComposing) afterType(e.target);
+            }}
+            onCompositionEnd={(e) => afterType(e.currentTarget)}
+            onSelect={(e) => {
+              follow();
+              ghostAt(e.currentTarget);
+            }}
+            onScroll={() => pop && !pop.focus && setPop(null)}
+            spellCheck={false}
+            placeholder={'ネタを続けて打つ。改行で話者が交代、空白なら同じ人が続ける\n行頭の @＝ト書き（途中の @なく＝直前のセリフの（なく））　、、＝……\n・m1＝音源①　・l＝照明（吹き出しでイン・アウトと秒数。秒数なし＝カット）\n同じ行に書くと、その前のセリフ・動きがきっかけになる\n1 で始める＝1番の役が話す\n外れたら下の名前を押して直す'}
+          />
+          {pop && <CuePop key={pop.hit.start} hit={pop.hit} dir={dirOf(pop.hit)} x={pop.x} y={pop.y} focus={pop.focus} onPick={pick} onClose={closePop} />}
+        </div>
         <ol className="bprev" ref={prev} aria-label="台本">
+          {warns.length > 0 && (
+            <li className="warns" role="status">
+              {warns.map((w) => (
+                <button key={w.id + w.msg} onPointerDown={keep} onClick={() => showItem(w.id)}>
+                  ⚠ {w.msg}
+                </button>
+              ))}
+            </li>
+          )}
           {p.items.length === 0 && (
             <li className="c">
               打ったそばから、ここに台本の形で出る
@@ -153,7 +286,7 @@ export function Writer(p: Props) {
                   <button className="who" style={{ color: m?.color }} disabled={!canSwap} onPointerDown={keep} onClick={() => p.onSpeaker(it.id)} title="押すと話者が替わる（この行だけ）">
                     {m?.name ?? '?'}
                   </button>
-                  <span className="x">{it.x}</span>
+                  <span className="x">{marked(it.x, marksOf(i))}</span>
                   <button className="fx" onPointerDown={keep} onClick={() => p.onKind(it.id)} title="動き（ト書き）にする" aria-label="動きにする">
                     （）
                   </button>
@@ -164,16 +297,23 @@ export function Writer(p: Props) {
             if (it.t === 'act')
               return (
                 <li key={it.id} data-id={it.id} className="a">
-                  <span className="x">
-                    （{it.w ? `${member(p.cast, it.w)?.name ?? ''}、` : ''}
-                    {it.x}）
-                  </span>
+                  <span className="x">{marked(`（${it.w ? `${member(p.cast, it.w)?.name ?? ''}、` : ''}${it.x}）`, marksOf(i))}</span>
                   <button className="fx" onPointerDown={keep} onClick={() => p.onKind(it.id)} title="セリフにする" aria-label="セリフにする">
                     「」
                   </button>
                   {join}
                 </li>
               );
+            // 音源・照明は清書の形（【音源①】F.O 5秒・【明転】）。矛盾していたら指摘する
+            if (it.t === 'cue' || (it.t === 'light' && !it.p)) {
+              const w = warnOf.get(it.id);
+              return (
+                <li key={it.id} data-id={it.id} className={`q ${it.t === 'cue' ? 'snd' : 'lgt'}${w ? ' bad' : ''}`} title={w}>
+                  <span className="x">{it.t === 'cue' ? cueText(it) : lightText(it)}</span>
+                  {w && <em className="why">⚠ {w}</em>}
+                </li>
+              );
+            }
             return (
               <li key={it.id} data-id={it.id} className="c">
                 <span>{label(it)}</span>

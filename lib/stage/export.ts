@@ -157,6 +157,9 @@ export function exportScript(doc: Doc, o: ExportOpts): string {
 
 /** きっかけ：直前のセリフ・動き・出ハケ */
 export function trigger(c: Ctx, i: number, marks: boolean): string {
+  // 同じ行に書いたきっかけ（セリフ・動き・演技のメモの文字）
+  const self = c.items[i];
+  if ((self.t === 'cue' || self.t === 'light') && self.k) return /^[（(]/.test(self.k) ? `${self.k} の後` : `「${self.k}」 の後`;
   for (let j = i - 1; j >= 0; j--) {
     const it = c.items[j];
     if (it.t === 'line') return `${lineText(c.cast, it, marks)} の後`;

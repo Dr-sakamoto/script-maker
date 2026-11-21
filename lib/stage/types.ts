@@ -10,10 +10,10 @@ export type CueOp = 'C.I' | 'F.I' | 'C.O' | 'F.O';
 export type Item =
   | { id: string; t: 'line'; w: Role; x: string; n?: string }
   | { id: string; t: 'act'; w?: Role; x: string }
-  | { id: string; t: 'light'; on: boolean; fade?: number; p?: PinNo }
+  | { id: string; t: 'light'; on: boolean; fade?: number; p?: PinNo; k?: string } // k＝きっかけの文字（同じ行に書いたセリフ・動き）
   | { id: string; t: 'move'; w: Role; in: true; x: number; z?: number; r?: number } // z＝奥行き（大道具）、r＝向き（度）
   | { id: string; t: 'move'; w: Role; in: false; side: Side }
-  | { id: string; t: 'cue'; n: number; op: CueOp; sec?: number; x?: string }
+  | { id: string; t: 'cue'; n: number; op: CueOp; sec?: number; x?: string; k?: string }
   | { id: string; t: 'se'; x: string }
   | { id: string; t: 'ma'; s: number }
   | { id: string; t: 'hold'; w: Role; by: Role }; // 小道具 w を人形 by が持つ

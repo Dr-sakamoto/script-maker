@@ -1,5 +1,6 @@
 import { member, puppets } from './cast';
 import { withId } from './edit';
+import { emptyCueState, itemOfToken, readToken, stepCue, TOKEN_START, type CueState } from './cueToken';
 import { NAME, parseScriptText } from './importText';
 import type { CastMember, CueOp, Item, Role } from './types';
 
@@ -25,6 +26,8 @@ export type QuickContext = {
   /** 直前に話した役と、その前に話した別の役（差し込む位置までの台本から） */
   prev?: Role;
   prev2?: Role;
+  /** そこまでの照明・音源（`・m1`・`・l` の向きを書いていないときに使う） */
+  cues?: CueState;
 };
 
 /** 項目が、文章のどこから来たか（line 行目の seg 番目のかたまり） */
@@ -57,19 +60,24 @@ const DIGITS = '１２３４５６７８９';
 const OPEN = /^[（(【［\[]/;
 const trim = (s: string) => s.replace(/^[\s　]+|[\s　]+$/g, '');
 const known = (cast: CastMember[], name: string) => cast.some((c) => c.name === name || (c.mark && c.mark === name));
+/** 音源・照明のかたまり（`・m1`・`・l`・`^…`）か */
+const cueish = (p: string) => /^[\^＾]/.test(p) || !!readToken(p);
+export type Piece = { s: string; k?: string };
+
 /**
  * 1行を、かたまりに分ける。2つ目からのかたまりは「同じ人が続ける」印の空白を頭に付ける。
  * - 行の途中の空白（日本語どうしの間）で分ける
  * - 行の途中の `@なく` は、直前のセリフに `（なく）` と付く（演技のメモ。次の空白まで）。別の動きになるのは改行して行頭に `@` が来たときだけ
- * - `^`（音）は行のどこにあっても、そこから新しいかたまりが始まる
+ * - `・m1`・`・l`・`^`（音源・照明）は行のどこにあっても、そこから新しいかたまり。
+ *   同じ行のその前の文字（セリフ・動き・演技のメモ）を、きっかけ k として持つ
  * 括弧・名前：… で始まる行は分けない。番号（`2 …`）・知っている名前（`ボケ …`）の印は最初のかたまりに残し、続きを分ける。行頭の空白も最初のかたまりに残す
  */
-export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
+export function piecesOf(raw: string, cast: CastMember[] = []): Piece[] {
   const body = trim(raw);
   if (!body) return [];
   let lead = raw.match(/^[ \t　]*/)?.[0] ?? '';
-  if (/^[（(【［\[『]/.test(body)) return [raw];
-  if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [raw];
+  if (/^[（(【［\[『]/.test(body)) return [{ s: raw }];
+  if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [{ s: raw }];
   // 話者の印（番号・知っている名前＋空白）は最初のかたまりの頭に残し、続きを分ける
   let rest = body;
   const mark = body.match(/^[1-9１-９][ 　]+/) ?? body.match(new RegExp(`^(${NAME})[ \\u3000]+`));
@@ -77,21 +85,44 @@ export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
     lead += mark[0];
     rest = body.slice(mark[0].length);
   }
-  const parts: string[] = [];
-  rest.split(/(?=[@＠^＾])/).forEach((chunk, ci) => {
+  const parts: Piece[] = [];
+  /** 演技のメモを付ける先（最後のセリフ・動きのかたまり） */
+  let text = -1;
+  /** きっかけになる文字（最後に書いたセリフ・動き・演技のメモ） */
+  let trig: string | undefined;
+  const plain = (p: string) => {
+    parts.push({ s: p });
+    text = parts.length - 1;
+    trig = /^[@＠]/.test(p) ? trim(p.slice(1)) : p.replace(/[、,，]{2,}/g, (d) => '…'.repeat(d.length));
+  };
+  const cue = (p: string) => parts.push({ s: p, ...(trig ? { k: trig } : {}) });
+  rest.split(new RegExp(`(?=[@＠^＾]|${TOKEN_START.source})`)).forEach((chunk, ci) => {
+    // ・m1・・l は、トークンの後ろを普通のかたまりとして続ける
+    const tk = readToken(chunk);
+    if (tk) {
+      cue(chunk.slice(0, tk.len));
+      chunk = chunk.slice(tk.len);
+    }
     chunk
       .split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/)
       .map(trim)
       .filter(Boolean)
       .forEach((p, pi) => {
         // 行の途中の ＠なく → 直前のセリフに（なく）と付く（別の動きにはならない）
-        const note = ci > 0 && pi === 0 && parts.length && /^[@＠]/.test(p) ? trim(p.slice(1)) : '';
-        if (note) parts[parts.length - 1] += `（${note}）`;
-        else parts.push(p);
+        const note = ci > 0 && pi === 0 && !tk && text >= 0 && /^[@＠]/.test(p) ? trim(p.slice(1)) : '';
+        if (note) {
+          parts[text].s += `（${note}）`;
+          trig = `（${note}）`;
+        } else if (/^[\^＾]/.test(p)) cue(p);
+        else plain(p);
       });
   });
-  if (!parts.length) return [raw];
-  return parts.map((p, i) => (i === 0 ? lead + p : `　${p}`));
+  if (!parts.length) return [{ s: raw }];
+  return parts.map((p, i) => ({ ...p, s: i === 0 ? lead + p.s : `　${p.s}` }));
+}
+
+export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
+  return piecesOf(raw, cast).map((p) => p.s);
 }
 
 /** 全角の数字・小数点を半角にして数にする */
@@ -111,7 +142,12 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
   const rows: QuickRow[] = [];
   let { prev, prev2 } = ctx.start ? {} : ctx;
   let at: QuickRow = { line: 0, seg: 0 };
+  const cues = ctx.cues ? { ...ctx.cues, playing: new Set(ctx.cues.playing), started: new Set(ctx.cues.started) } : emptyCueState();
+  /** 今のかたまりのきっかけ（同じ行のその前の文字） */
+  let k: string | undefined;
   const push = (it: Item) => {
+    if (k && (it.t === 'cue' || (it.t === 'light' && !it.p))) it = { ...it, k };
+    stepCue(cues, it);
     items.push(it);
     rows.push(at);
   };
@@ -182,6 +218,10 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     if (!l) return;
     let m: RegExpMatchArray | null;
 
+    // ・m1＝音源①、・l＝照明（向きを書いていなければ、そこまでの流れで決める）
+    const tk = readToken(l);
+    if (tk && tk.len === l.length) return void push(withId(itemOfToken(tk, cues)));
+
     // 「、、」は「……」に（打ちやすい読点で三点リーダーを書く。打った数だけ長く）
     l = l.replace(/[、,，]{2,}/g, (d) => '…'.repeat(d.length));
     // ジョジョ明転・ジョジョ暗転 → 徐々明転・徐々暗転
@@ -231,9 +271,10 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     .replace(/\r\n?/g, '\n')
     .split('\n')
     .forEach((raw, line) =>
-      segmentsOf(raw, cast).forEach((s, seg) => {
+      piecesOf(raw, cast).forEach((p, seg) => {
         at = { line, seg };
-        one(s);
+        k = p.k;
+        one(p.s);
       }),
     );
   return { items, rows, cast, added, next: after() };
