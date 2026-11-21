@@ -134,8 +134,9 @@ describe('まとめ書き：雑に打った文章', () => {
     expect(show(r.items)).toEqual(['a:ボケが悪いんだろ！', 'b:ツッコミは俺？']);
   });
 
-  it('書式のある行は分けない', () => {
-    const r = parseQuick('（ボケ、立つ。　そして座る）\n1 どうも　ボケです', cast, { first: 'b' });
-    expect(show(r.items)).toEqual(['(a立つ。　そして座る)', 'a:どうも　ボケです']);
+  it('（ ）の行は分けない。番号の行は、番号を最初に残して分ける（＠ も効く）', () => {
+    const r = parseQuick('（ボケ、立つ。　そして座る）\n1 どうも　ボケです＠頭をかく', cast, { first: 'b' });
+    expect(show(r.items)).toEqual(['(a立つ。　そして座る)', 'a:どうも', 'a:ボケです', '(頭をかく)']);
+    expect(show(parseQuick('2 もう！だからおれじゃないってぇ　りゅうきがいっただけじゃん＠なく', cast, { first: 'a' }).items)).toEqual(['b:もう！だからおれじゃないってぇ', 'b:りゅうきがいっただけじゃん', '(なく)']);
   });
 });

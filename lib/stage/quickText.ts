@@ -62,21 +62,27 @@ const known = (cast: CastMember[], name: string) => cast.some((c) => c.name === 
  * - 行の途中の空白（日本語どうしの間）で分ける
  * - `@`（動き）・`^`（音）は行のどこにあっても、そこから新しいかたまりが始まる。
  *   次の空白までがその動き・音で、そのあとは同じ人のセリフに戻る（`どうも@座る　疲れた` → セリフ・動き・セリフ）
- * 書式のある行（括弧・番号・名前：…）は分けない。行頭の空白は最初のかたまりに残す
+ * 括弧・名前：… で始まる行は分けない。番号（`2 …`）・知っている名前（`ボケ …`）の印は最初のかたまりに残し、続きを分ける。行頭の空白も最初のかたまりに残す
  */
 export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
   const body = trim(raw);
   if (!body) return [];
-  const lead = raw.match(/^[ \t　]*/)?.[0] ?? '';
-  if (/^[（(【［\[『]/.test(body) || /^[1-9１-９][ 　]/.test(body)) return [raw];
+  let lead = raw.match(/^[ \t　]*/)?.[0] ?? '';
+  if (/^[（(【［\[『]/.test(body)) return [raw];
   if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [raw];
-  const head = body.match(new RegExp(`^(${NAME})[ \\u3000]`));
-  if (head && known(cast, head[1])) return [raw];
-  const parts = body
+  // 話者の印（番号・知っている名前＋空白）は最初のかたまりの頭に残し、続きを分ける
+  let rest = body;
+  const mark = body.match(/^[1-9１-９][ 　]+/) ?? body.match(new RegExp(`^(${NAME})[ \\u3000]+`));
+  if (mark && (/^[1-9１-９]/.test(mark[0]) || known(cast, mark[1]))) {
+    lead += mark[0];
+    rest = body.slice(mark[0].length);
+  }
+  const parts = rest
     .split(/(?=[@＠^＾])/)
     .flatMap((chunk) => chunk.split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/))
     .map(trim)
     .filter(Boolean);
+  if (!parts.length) return [raw];
   return parts.map((p, i) => (i === 0 ? lead + p : `　${p}`));
 }
 

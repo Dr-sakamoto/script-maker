@@ -19,6 +19,8 @@ export type Synced = {
 };
 
 const SPECIAL_HEAD = /^[@＠^＾（(【［\[『■1-9１-９]/;
+/** 書き直すと分かれてしまう文字：空白（日本語どうしの間）・@・^ */
+const SPLITTABLE = /[@＠^＾]|(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/;
 const PLAIN_BAD = /[\s　：:「」『』@＠^＾]|[、,，]{2}/;
 
 /** 何も付けずに書いても、そのままのセリフに読める文か */
@@ -77,6 +79,8 @@ export function docToText(doc: Doc): { text: string; synced: Synced } {
       if (it.n && m) l = `${m.name}「${it.x}」（${it.n}）`;
       else if (ok && it.w === auto) l = it.x;
       else if (ok && it.w === prev) l = `　${it.x}`;
+      // 空白や @ ^ を含む文は、番号の行だと分かれてしまうので 名前「…」（分けない書き方）にする
+      else if (m && SPLITTABLE.test(it.x) && !/[「」]/.test(it.x)) l = `${m.name}「${it.x}」`;
       else l = n >= 1 && n <= 9 ? `${n} ${it.x}` : `${m?.name ?? '？'}「${it.x}」`;
       if (it.w !== prev) {
         prev2 = prev;
@@ -87,7 +91,7 @@ export function docToText(doc: Doc): { text: string; synced: Synced } {
     if (it.t === 'act') {
       const body = `${it.w ? `${nameOf(cast, it.w)}、` : ''}${it.x}`;
       // @ の動きは空白や @ ^ で区切られるので、そういう文字を含む動きは（ ）で包んで1つのまま残す
-      return /[@＠^＾]|(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/.test(body) ? `（${body}）` : `@${body}`;
+      return SPLITTABLE.test(body) ? `（${body}）` : `@${body}`;
     }
     const before = i > 0 ? states[i - 1] : init;
     if (it.t === 'move' && it.in && classifyMove(before, it) === 'board') return `【板付き】${nameOf(cast, it.w)}（${areaOf(it.x)}）`;
