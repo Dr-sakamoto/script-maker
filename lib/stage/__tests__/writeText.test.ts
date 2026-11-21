@@ -46,7 +46,7 @@ describe('かく：台本 → 文章', () => {
       { id: '6', t: 'line', w: 'b', x: 'え', n: '小声で' },
     ]);
     const r = reread(d);
-    expect(r.text.split('\n')).toEqual(['1 いや　ちがう', '2 ボケが悪い', '1 1番です', '2 暗転だ', '1 結論：やめとけ', 'ツッコミ「え」（小声で）']);
+    expect(r.text.split('\n')).toEqual(['ボケ「いや　ちがう」', '2 ボケが悪い', '1 1番です', '2 暗転だ', '1 結論：やめとけ', 'ツッコミ「え」（小声で）']);
     expect(strip(r.items)).toEqual(strip(d.items));
   });
 

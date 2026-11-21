@@ -1,5 +1,6 @@
 import { member, puppets } from './cast';
 import { withId } from './edit';
+import { emptyCueState, itemOfToken, readToken, stepCue, TOKEN_START, type CueState } from './cueToken';
 import { NAME, parseScriptText } from './importText';
 import type { CastMember, CueOp, Item, Role } from './types';
 
@@ -8,9 +9,9 @@ import type { CastMember, CueOp, Item, Role } from './types';
  * 速く打てるよう、雑に打っても見当をつけて割り振り、外れたところはあとから直せるようにする。
  *
  * - 改行 → 話者が交代。空白（行頭でも行の途中でも） → 直前と同じ話者が続けて話す
- * - 行の途中の空白で区切ったかたまりは別の項目になる。`@`・`^` は行のどこでも、そこから新しい動き・音（`どうも@座る　疲れた` → セリフ・動き・セリフ）
+ * - 行の途中の空白で区切ったかたまりは別の項目になる。行の途中の `@なく` は直前のセリフの `（なく）`。`^` は行のどこでも、そこから新しい音
  * - `1 セリフ`（数字＋空白） → その番号の役。知っている `名前「セリフ」`・`名前：セリフ` → その役（知らない名前は役を足さず、そのままのセリフ）
- * - `@ト書き`（Shift 要らずで、ふだん使わない記号。セリフの演技の（ ）とは別に、ここから新しい動きが始まる）・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
+ * - `@ト書き`（Shift 要らずで、ふだん使わない記号。行頭に書くと1行の動き。行の途中なら直前のセリフの（ ））・`（ト書き` → 動き。括弧が無くても「役名、〜する」「役名が〜する」は動きと見る
  * - `^1` → 音源1 を出す（`^1 fo 3秒`＝フェードアウト、`^2 出囃子`＝名前付き）。`^拍手`（番号なし）→ SE
  * - `、、` → `……`（打った数だけ。`、、、、` → `…………`）。間は「…」の数で伝える（間だけの書き方は無い）
  * - `明転`・`暗転`・`SE：拍手`・`【…】` などは台本の読み込みと同じ（importText.ts）
@@ -25,6 +26,8 @@ export type QuickContext = {
   /** 直前に話した役と、その前に話した別の役（差し込む位置までの台本から） */
   prev?: Role;
   prev2?: Role;
+  /** そこまでの照明・音源（`・m1`・`・l` の向きを書いていないときに使う） */
+  cues?: CueState;
 };
 
 /** 項目が、文章のどこから来たか（line 行目の seg 番目のかたまり） */
@@ -57,28 +60,80 @@ const DIGITS = '１２３４５６７８９';
 const OPEN = /^[（(【［\[]/;
 const trim = (s: string) => s.replace(/^[\s　]+|[\s　]+$/g, '');
 const known = (cast: CastMember[], name: string) => cast.some((c) => c.name === name || (c.mark && c.mark === name));
+/** 音源・照明のかたまり（`・m1`・`・l`・`^…`）か */
+const cueish = (p: string) => /^[\^＾]/.test(p) || !!readToken(p);
+export type Piece = { s: string; k?: string };
+
 /**
  * 1行を、かたまりに分ける。2つ目からのかたまりは「同じ人が続ける」印の空白を頭に付ける。
  * - 行の途中の空白（日本語どうしの間）で分ける
- * - `@`（動き）・`^`（音）は行のどこにあっても、そこから新しいかたまりが始まる。
- *   次の空白までがその動き・音で、そのあとは同じ人のセリフに戻る（`どうも@座る　疲れた` → セリフ・動き・セリフ）
- * 書式のある行（括弧・番号・名前：…）は分けない。行頭の空白は最初のかたまりに残す
+ * - 行の途中の `@なく` は、直前のセリフに `（なく）` と付く（演技のメモ。次の空白まで）。別の動きになるのは改行して行頭に `@` が来たときだけ
+ * - `・m1`・`・l`・`^`（音源・照明）は行のどこにあっても、そこから新しいかたまり。
+ *   同じ行のその前の文字（セリフ・動き・演技のメモ）を、きっかけ k として持つ
+ * 括弧・名前：… で始まる行は分けない。番号（`2 …`）・知っている名前（`ボケ …`）の印は最初のかたまりに残し、続きを分ける。行頭の空白も最初のかたまりに残す
  */
-export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
+export function piecesOf(raw: string, cast: CastMember[] = []): Piece[] {
   const body = trim(raw);
   if (!body) return [];
-  const lead = raw.match(/^[ \t　]*/)?.[0] ?? '';
-  if (/^[（(【［\[『]/.test(body) || /^[1-9１-９][ 　]/.test(body)) return [raw];
-  if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [raw];
-  const head = body.match(new RegExp(`^(${NAME})[ \\u3000]`));
-  if (head && known(cast, head[1])) return [raw];
-  const parts = body
-    .split(/(?=[@＠^＾])/)
-    .flatMap((chunk) => chunk.split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/))
-    .map(trim)
-    .filter(Boolean);
-  return parts.map((p, i) => (i === 0 ? lead + p : `　${p}`));
+  let lead = raw.match(/^[ \t　]*/)?.[0] ?? '';
+  if (/^[（(【［\[『]/.test(body)) return [{ s: raw }];
+  if (new RegExp(`^${NAME}\\s*[：:「\\t]`).test(body)) return [{ s: raw }];
+  // 話者の印（番号・知っている名前＋空白）は最初のかたまりの頭に残し、続きを分ける
+  let rest = body;
+  const mark = body.match(/^[1-9１-９][ 　]+/) ?? body.match(new RegExp(`^(${NAME})[ \\u3000]+`));
+  if (mark && (/^[1-9１-９]/.test(mark[0]) || known(cast, mark[1]))) {
+    lead += mark[0];
+    rest = body.slice(mark[0].length);
+  }
+  const parts: Piece[] = [];
+  /** 演技のメモを付ける先（最後のセリフ・動きのかたまり） */
+  let text = -1;
+  /** きっかけになる文字（最後に書いたセリフ・動き・演技のメモ） */
+  let trig: string | undefined;
+  const plain = (p: string) => {
+    parts.push({ s: p });
+    text = parts.length - 1;
+    trig = /^[@＠]/.test(p) ? trim(p.slice(1)) : p.replace(/[、,，]{2,}/g, (d) => '…'.repeat(d.length));
+  };
+  const cue = (p: string) => parts.push({ s: p, ...(trig ? { k: trig } : {}) });
+  rest.split(new RegExp(`(?=[@＠^＾]|${TOKEN_START.source})`)).forEach((chunk, ci) => {
+    // ・m1・・l は、トークンの後ろを普通のかたまりとして続ける
+    const tk = readToken(chunk);
+    if (tk) {
+      cue(chunk.slice(0, tk.len));
+      chunk = chunk.slice(tk.len);
+    }
+    chunk
+      .split(/(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/)
+      .map(trim)
+      .filter(Boolean)
+      .forEach((p, pi) => {
+        // 行の途中の ＠なく → 直前のセリフに（なく）と付く（別の動きにはならない）
+        const note = ci > 0 && pi === 0 && !tk && text >= 0 && /^[@＠]/.test(p) ? trim(p.slice(1)) : '';
+        if (note) {
+          parts[text].s += `（${note}）`;
+          trig = `（${note}）`;
+        } else if (/^[\^＾]/.test(p)) cue(p);
+        else plain(p);
+      });
+  });
+  if (!parts.length) return [{ s: raw }];
+  return parts.map((p, i) => ({ ...p, s: i === 0 ? lead + p.s : `　${p.s}` }));
 }
+
+export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
+  return piecesOf(raw, cast).map((p) => p.s);
+}
+
+/** 全角の数字・小数点を半角にして数にする */
+const numOf = (s: string): number => Number(s.replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).replace('．', '.'));
+const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+/** 音源の番号（1 / １ / ①） */
+const cueNo = (s: string): number => (CIRCLED.includes(s) ? CIRCLED.indexOf(s) + 1 : numOf(s));
+/** 秒数（任意）：5 / ５ / 5秒 / 2.5s */
+const SEC = '(?:[\\s　]*([0-9０-９]+(?:[.．][0-9０-９]+)?)[\\s　]*(?:秒|s)?)?';
+const IN = 'iIｉＩいイ';
+const OUT = 'aAａＡあア';
 
 export function parseQuick(text: string, base: CastMember[], ctx: QuickContext = {}): QuickResult {
   let cast = base;
@@ -87,7 +142,12 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
   const rows: QuickRow[] = [];
   let { prev, prev2 } = ctx.start ? {} : ctx;
   let at: QuickRow = { line: 0, seg: 0 };
+  const cues = ctx.cues ? { ...ctx.cues, playing: new Set(ctx.cues.playing), started: new Set(ctx.cues.started) } : emptyCueState();
+  /** 今のかたまりのきっかけ（同じ行のその前の文字） */
+  let k: string | undefined;
   const push = (it: Item) => {
+    if (k && (it.t === 'cue' || (it.t === 'light' && !it.p))) it = { ...it, k };
+    stepCue(cues, it);
     items.push(it);
     rows.push(at);
   };
@@ -124,6 +184,20 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
 
   /** ^ のあと：`1`・`1 fo 3秒`・`2 出囃子` → 音源、`拍手` → SE */
   const sound = (b: string) => {
+    b = trim(b);
+    let k: RegExpMatchArray | null;
+    // 数字なし＝照明：m・い＝明転、あ＝暗転（数字を付けたときだけ、その秒数かけてじわ）
+    if ((k = b.match(new RegExp(`^([mMｍＭ${IN}]|[${OUT}])${SEC}$`)))) {
+      const fade = k[2] ? numOf(k[2]) : 0;
+      return void push(withId({ t: 'light', on: new RegExp(`[mMｍＭ${IN}]`).test(k[1]), ...(fade > 0 ? { fade } : {}) }));
+    }
+    // 数字あり＝音源：1い＝イン、1あ＝アウト（数字を付けたときだけ、その秒数かけてフェード）
+    if ((k = b.match(new RegExp(`^([0-9０-９]+)[\\s　]*([${IN}]|[${OUT}])${SEC}$`)))) {
+      const inn = new RegExp(`[${IN}]`).test(k[2]);
+      const sec = k[3] ? numOf(k[3]) : 0;
+      const op = (sec > 0 ? (inn ? 'F.I' : 'F.O') : inn ? 'C.I' : 'C.O') as CueOp;
+      return void push(withId({ t: 'cue', n: numOf(k[1]), op, ...(sec > 0 ? { sec } : {}) }));
+    }
     const c = b.match(/^([0-9０-９]+)[\s　]*(.*)$/);
     if (!c) return void (b && push(withId({ t: 'se', x: b })));
     const n = Number(c[1].replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)));
@@ -144,8 +218,21 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     if (!l) return;
     let m: RegExpMatchArray | null;
 
+    // ・m1＝音源①、・l＝照明（向きを書いていなければ、そこまでの流れで決める）
+    const tk = readToken(l);
+    if (tk && tk.len === l.length) return void push(withId(itemOfToken(tk, cues)));
+
     // 「、、」は「……」に（打ちやすい読点で三点リーダーを書く。打った数だけ長く）
     l = l.replace(/[、,，]{2,}/g, (d) => '…'.repeat(d.length));
+    // ジョジョ明転・ジョジョ暗転 → 徐々明転・徐々暗転
+    l = l.replace(/^(?:ジョジョ|じょじょ)に?(?=明転|暗転)/, '徐々');
+    // 明転5・暗転５ → 数字を付けたときだけ、その秒数かけてじわ
+    if ((m = l.match(/^(明転|暗転)[\s　]*([0-9０-９]+(?:[.．][0-9０-９]+)?)$/))) l = `${m[1]} ${numOf(m[2])}秒`;
+    // 音源1・音源① → 音源を出す（C.I）。数字を付けたときだけフェード（音源1 5 → 5秒かけてイン）
+    if ((m = l.match(/^音源[\s　]*([①-⑳]|[0-9０-９]+)(?:[\s　]*([0-9０-９]+(?:[.．][0-9０-９]+)?)[\s　]*(?:秒|s)?)?$/))) {
+      const sec = m[2] ? numOf(m[2]) : 0;
+      return void push(withId({ t: 'cue', n: cueNo(m[1]), op: (sec > 0 ? 'F.I' : 'C.I') as CueOp, ...(sec > 0 ? { sec } : {}) }));
+    }
     // 行頭に ^ → 音：番号があれば音源、なければ SE
     if ((m = l.match(/^[\^＾][\s　]*(.*)$/))) return sound(m[1]);
     // 行頭に @ → ト書き（Shift の要る括弧を打たずに済む）
@@ -184,9 +271,10 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
     .replace(/\r\n?/g, '\n')
     .split('\n')
     .forEach((raw, line) =>
-      segmentsOf(raw, cast).forEach((s, seg) => {
+      piecesOf(raw, cast).forEach((p, seg) => {
         at = { line, seg };
-        one(s);
+        k = p.k;
+        one(p.s);
       }),
     );
   return { items, rows, cast, added, next: after() };

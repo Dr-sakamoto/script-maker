@@ -64,13 +64,15 @@ describe('まとめ書き', () => {
   it('行頭の @ はト書き（括弧を打たなくていい）', () => {
     const r = parseQuick('どうも\n@ボケ、座る\n＠笑う　なんで\n、そうだね\n、、', cast, { first: 'a' });
     expect(show(r.items)).toEqual(['a:どうも', '(a座る)', '(笑う)', 'a:なんで', 'b:、そうだね', 'a:……']);
-    // @ は次の空白までが動き。そのあとは、同じ人のセリフに戻る
+    // 行頭の @ は次の空白までが動き。そのあとは、同じ人のセリフに戻る
     expect(show(parseQuick('@二人　顔を見合わせる', cast, { first: 'a' }).items)).toEqual(['(二人)', 'a:顔を見合わせる']);
   });
 
-  it('@ と ^ は行の途中でも効く。（ ）はセリフの演技のまま、@ から新しい動き', () => {
-    expect(show(parseQuick('どうも@座る　疲れた', cast, { first: 'a' }).items)).toEqual(['a:どうも', '(座る)', 'a:疲れた']);
-    expect(show(parseQuick('どうも（笑って）　ええ @立つ 次', cast, { first: 'a' }).items)).toEqual(['a:どうも（笑って）', 'a:ええ', '(立つ)', 'a:次']);
+  it('行の途中の @ は直前のセリフの（ ）。別の動きになるのは行頭の @ だけ。^ は途中でも新しい音', () => {
+    expect(show(parseQuick('どうも@座る　疲れた', cast, { first: 'a' }).items)).toEqual(['a:どうも（座る）', 'a:疲れた']);
+    expect(show(parseQuick('もう！だからおれじゃないってぇ　りゅうきがいっただけじゃん＠なく', cast, { first: 'a' }).items)).toEqual(['a:もう！だからおれじゃないってぇ', 'a:りゅうきがいっただけじゃん（なく）']);
+    expect(show(parseQuick('りゅうきが＠なく＠笑う', cast, { first: 'a' }).items)).toEqual(['a:りゅうきが（なく）（笑う）']);
+    expect(show(parseQuick('りゅうきが\n＠なく', cast, { first: 'a' }).items)).toEqual(['a:りゅうきが', '(なく)']);
     const r = parseQuick('どうも ^拍手 ありがとう\nはい^2 出囃子', cast, { first: 'a' });
     expect(r.items.map((it) => it.t)).toEqual(['line', 'se', 'line', 'line', 'cue']);
     expect(r.items[1]).toMatchObject({ t: 'se', x: '拍手' });
@@ -134,8 +136,34 @@ describe('まとめ書き：雑に打った文章', () => {
     expect(show(r.items)).toEqual(['a:ボケが悪いんだろ！', 'b:ツッコミは俺？']);
   });
 
-  it('書式のある行は分けない', () => {
-    const r = parseQuick('（ボケ、立つ。　そして座る）\n1 どうも　ボケです', cast, { first: 'b' });
-    expect(show(r.items)).toEqual(['(a立つ。　そして座る)', 'a:どうも　ボケです']);
+  it('（ ）の行は分けない。番号の行は、番号を最初に残して分ける（＠ も効く）', () => {
+    const r = parseQuick('（ボケ、立つ。　そして座る）\n1 どうも　ボケです＠頭をかく', cast, { first: 'b' });
+    expect(show(r.items)).toEqual(['(a立つ。　そして座る)', 'a:どうも', 'a:ボケです（頭をかく）']);
+    expect(show(parseQuick('2 もう！だからおれじゃないってぇ　りゅうきがいっただけじゃん＠なく', cast, { first: 'a' }).items)).toEqual(['b:もう！だからおれじゃないってぇ', 'b:りゅうきがいっただけじゃん（なく）']);
+  });
+  it('照明・音源のショートカット：数字なしはカット、数字を付けたときだけ秒数かけてじわ・フェード', () => {
+    const one = (t: string) => parseQuick(t, cast, { first: 'a' }).items.map(({ id: _id, ...o }) => o);
+    // 照明（数字なし）：m・い＝明転、あ＝暗転
+    expect(one('＾ｍ')).toEqual([{ t: 'light', on: true }]);
+    expect(one('^い')).toEqual([{ t: 'light', on: true }]);
+    expect(one('＾あ')).toEqual([{ t: 'light', on: false }]);
+    expect(one('^あ5')).toEqual([{ t: 'light', on: false, fade: 5 }]);
+    // 音源（数字あり）：1い＝イン、1あ＝アウト、後ろの数字＝秒数
+    expect(one('＾１い')).toEqual([{ t: 'cue', n: 1, op: 'C.I' }]);
+    expect(one('＾１い５')).toEqual([{ t: 'cue', n: 1, op: 'F.I', sec: 5 }]);
+    expect(one('＾１あ')).toEqual([{ t: 'cue', n: 1, op: 'C.O' }]);
+    expect(one('^1あ2.5秒')).toEqual([{ t: 'cue', n: 1, op: 'F.O', sec: 2.5 }]);
+    expect(one('^15い')).toEqual([{ t: 'cue', n: 15, op: 'C.I' }]);
+    // これまでの書き方・名前付き・SE はそのまま
+    expect(one('^1 fo 3秒')).toEqual([{ t: 'cue', n: 1, op: 'F.O', sec: 3 }]);
+    expect(one('^2 出囃子')).toEqual([{ t: 'cue', n: 2, op: 'C.I', x: '出囃子' }]);
+    expect(one('^あいう')).toEqual([{ t: 'se', x: 'あいう' }]);
+    // 言葉でも：明転・暗転・音源1（数字を付けたときだけじわ・フェード）。ジョジョ＝徐々
+    expect(one('明転5')).toEqual([{ t: 'light', on: true, fade: 5 }]);
+    expect(one('ジョジョ暗転')).toEqual([{ t: 'light', on: false, fade: 3 }]);
+    expect(one('音源①')).toEqual([{ t: 'cue', n: 1, op: 'C.I' }]);
+    expect(one('音源1 5秒')).toEqual([{ t: 'cue', n: 1, op: 'F.I', sec: 5 }]);
+    // M1（M-1）はセリフのまま
+    expect(one('M1')).toEqual([{ t: 'line', w: 'a', x: 'M1' }]);
   });
 });

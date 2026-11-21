@@ -1911,6 +1911,141 @@
   height: 100%;
   max-height: none;
 }
+/* 欄と、・m1・・l の吹き出し */
+.writer .wbox {
+  position: relative;
+  min-height: 0;
+  display: flex;
+}
+.writer .wbox textarea {
+  flex: 1;
+}
+.cuepop {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1.5px solid var(--c);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  font-size: 13px;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.cuepop.snd {
+  --c: var(--sound);
+}
+.cuepop.lgt {
+  --c: var(--light);
+}
+/* 幽霊：近づいたときに薄く出る。触ると濃くなる */
+.cuepop.ghost {
+  opacity: 0.45;
+  box-shadow: none;
+}
+.cuepop.ghost:hover,
+.cuepop.ghost:focus-within {
+  opacity: 1;
+}
+.cuepop b {
+  font-weight: 700;
+  margin-right: 2px;
+}
+.cuepop button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--c);
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.cuepop button.on {
+  background: var(--c);
+  color: var(--panel);
+  font-weight: 700;
+}
+.cuepop label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--sub);
+}
+.cuepop input {
+  width: 3.2em;
+  min-height: 30px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--input);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  text-align: right;
+}
+/* 清書：音源＝青緑、照明＝黄。同じ行に書いたきっかけにマーカー */
+.writer .bprev li.q .x {
+  font-weight: 700;
+  padding-left: 8px;
+  border-left: 3px solid var(--c);
+}
+.writer .bprev li.q.snd {
+  --c: var(--sound);
+}
+.writer .bprev li.q.lgt {
+  --c: var(--light);
+}
+.writer mark.mk {
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.writer mark.mk.snd {
+  background: color-mix(in srgb, var(--sound) 32%, transparent);
+}
+.writer mark.mk.lgt {
+  background: color-mix(in srgb, var(--light) 45%, transparent);
+}
+.writer mark.mk.both {
+  background: linear-gradient(transparent 50%, color-mix(in srgb, var(--sound) 32%, transparent) 50%), color-mix(in srgb, var(--light) 45%, transparent);
+}
+/* 矛盾の指摘 */
+.writer .bprev li.warns {
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0;
+}
+.writer .bprev li.warns button {
+  border: 1px solid #d0573b;
+  border-radius: 999px;
+  background: color-mix(in srgb, #d0573b 10%, transparent);
+  color: #c4472a;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 12px;
+}
+.writer .bprev li.bad .x {
+  text-decoration: underline wavy #d0573b;
+  text-underline-offset: 4px;
+}
+.writer .bprev .why {
+  font-style: normal;
+  font-size: 11px;
+  color: #c4472a;
+}
+.writer .bprev li.flash {
+  animation: flash 1.2s;
+}
+@keyframes flash {
+  0%,
+  40% {
+    background: color-mix(in srgb, #d0573b 22%, transparent);
+  }
+}
 /* 今打っている行 */
 .writer .bprev li.cur {
   background: var(--input);

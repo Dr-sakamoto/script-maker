@@ -1,5 +1,6 @@
 import { MARKS, member, nameOf, puppets } from './cast';
 import { lineOfItem } from './export';
+import { cueStateOf, tokenOf } from './cueToken';
 import { parseQuick } from './quickText';
 import { allStates, areaOf, classifyMove, initialState } from './state';
 import type { CastMember, Doc, Item, Role } from './types';
@@ -18,8 +19,10 @@ export type Synced = {
   byLine: Item[][];
 };
 
-const SPECIAL_HEAD = /^[@＠^＾（(【［\[『■1-9１-９]/;
-const PLAIN_BAD = /[\s　：:「」『』@＠^＾]|[、,，]{2}/;
+const SPECIAL_HEAD = /^[@＠^＾（(【［\[『■1-9１-９・･/／]/;
+/** 書き直すと分かれてしまう文字：空白（日本語どうしの間）・@・^ */
+const SPLITTABLE = /[@＠^＾]|[・･/／][mMｍＭlLｌＬ]|(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/;
+const PLAIN_BAD = /[\s　：:「」『』@＠^＾]|[、,，]{2}|[・･/／][mMｍＭlLｌＬ]/;
 
 /** 何も付けずに書いても、そのままのセリフに読める文か */
 function plain(x: string, cast: CastMember[]): boolean {
@@ -67,33 +70,81 @@ export function docToText(doc: Doc): { text: string; synced: Synced } {
   let prev: Role | undefined;
   let prev2: Role | undefined;
 
-  const lines = doc.items.map((it, i): string => {
+  const lines: string[] = [];
+  const byLine: Item[][] = [];
+  /** 最後の行の後ろに、きっかけ付きの ・m1・・l を足せるか（何も付けない・番号・続きの行だけ） */
+  let tail = false;
+  /** 音源・照明のあとに戻す演技のメモ（`あさだな・l＠のびをする` の `＠のびをする`） */
+  let pending = '';
+  const flush = () => {
+    if (pending) lines[lines.length - 1] += pending;
+    pending = '';
+  };
+  const add = (l: string, it: Item, open: boolean) => {
+    flush();
+    lines.push(l);
+    byLine.push([it]);
+    tail = open;
+  };
+
+  doc.items.forEach((it, i) => {
+    // 同じ行に書いた音源・照明（きっかけ付き）は、きっかけの行の後ろに ・m1・・l で戻す
+    const tok = (it.t === 'cue' || it.t === 'light') && it.k ? tokenOf(it) : null;
+    if (tok && tail) {
+      lines[lines.length - 1] += tok;
+      byLine[byLine.length - 1].push(it);
+      return;
+    }
     if (it.t === 'line') {
       const auto = nextSpeaker(cast, prev, prev2);
       const m = member(cast, it.w);
       const n = speaking.findIndex((c) => c.id === it.w) + 1;
+      // 演技のメモ（行の後ろの（…））がきっかけなら、＠ で書いて、同じ行に戻せるようにする
+      const nk = doc.items[i + 1];
+      const kk = (nk?.t === 'cue' || nk?.t === 'light') && nk.k && tokenOf(nk) ? nk.k : '';
+      let x = it.x;
+      let suffix = '';
+      if (kk.startsWith('（') && it.x.endsWith(kk)) x = `${it.x.slice(0, -kk.length)}＠${kk.slice(1, -1)}`;
+      else if (kk && it.x.startsWith(kk) && /^(（[^（）]+）)+$/.test(it.x.slice(kk.length))) {
+        x = kk;
+        suffix = it.x.slice(kk.length).replace(/（([^（）]+)）/g, '＠$1');
+      }
       const ok = plain(it.x, cast);
       let l: string;
-      if (it.n && m) l = `${m.name}「${it.x}」（${it.n}）`;
-      else if (ok && it.w === auto) l = it.x;
-      else if (ok && it.w === prev) l = `　${it.x}`;
-      else l = n >= 1 && n <= 9 ? `${n} ${it.x}` : `${m?.name ?? '？'}「${it.x}」`;
+      let open = true;
+      if (it.n && m) {
+        l = `${m.name}「${it.x}」（${it.n}）`;
+        open = false;
+      } else if (ok && it.w === auto) l = x;
+      else if (ok && it.w === prev) l = `　${x}`;
+      // 空白や @ ^ を含む文は、番号の行だと分かれてしまうので 名前「…」（分けない書き方）にする
+      else if (m && SPLITTABLE.test(it.x) && !/[「」]/.test(it.x)) {
+        l = `${m.name}「${it.x}」`;
+        open = false;
+      } else if (n >= 1 && n <= 9) l = `${n} ${x}`;
+      else {
+        l = `${m?.name ?? '？'}「${it.x}」`;
+        open = false;
+      }
       if (it.w !== prev) {
         prev2 = prev;
         prev = it.w;
       }
-      return l;
+      add(l, it, open);
+      if (open) pending = suffix;
+      return;
     }
     if (it.t === 'act') {
       const body = `${it.w ? `${nameOf(cast, it.w)}、` : ''}${it.x}`;
       // @ の動きは空白や @ ^ で区切られるので、そういう文字を含む動きは（ ）で包んで1つのまま残す
-      return /[@＠^＾]|(?<=[^\x00-\x7F])[ 　]+(?=[^\x00-\x7F])/.test(body) ? `（${body}）` : `@${body}`;
+      return SPLITTABLE.test(body) ? add(`（${body}）`, it, false) : add(`@${body}`, it, true);
     }
     const before = i > 0 ? states[i - 1] : init;
-    if (it.t === 'move' && it.in && classifyMove(before, it) === 'board') return `【板付き】${nameOf(cast, it.w)}（${areaOf(it.x)}）`;
-    return lineOfItem(doc, i, false) ?? `（${it.t}）`;
+    if (it.t === 'move' && it.in && classifyMove(before, it) === 'board') return add(`【板付き】${nameOf(cast, it.w)}（${areaOf(it.x)}）`, it, false);
+    add(lineOfItem(doc, i, false) ?? `（${it.t}）`, it, false);
   });
-  return { text: lines.join('\n'), synced: { lines, byLine: doc.items.map((it) => [it]) } };
+  flush();
+  return { text: lines.join('\n'), synced: { lines, byLine } };
 }
 
 const splitLines = (text: string) => text.replace(/\r\n?/g, '\n').split('\n');
@@ -119,8 +170,9 @@ export function textToItems(text: string, base: Doc, synced: Synced): { items: I
   /** 書き換えた行のかたまりを、直前までの話者の続きから読む */
   const readBlock = (lines: string[], olds: Item[][]) => {
     if (!lines.length) return;
-    const { prev, prev2 } = spokeBefore(flat(), Infinity);
-    const r = parseQuick(lines.join('\n'), cast, { prev, prev2 });
+    const before = flat();
+    const { prev, prev2 } = spokeBefore(before, Infinity);
+    const r = parseQuick(lines.join('\n'), cast, { prev, prev2, cues: cueStateOf(before) });
     cast = r.cast;
     const per: Item[][] = lines.map(() => []);
     r.items.forEach((it, k) => per[r.rows[k].line].push(it));
