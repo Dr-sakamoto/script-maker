@@ -94,6 +94,16 @@ export function segmentsOf(raw: string, cast: CastMember[] = []): string[] {
   return parts.map((p, i) => (i === 0 ? lead + p : `　${p}`));
 }
 
+/** 全角の数字・小数点を半角にして数にする */
+const numOf = (s: string): number => Number(s.replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)).replace('．', '.'));
+const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+/** 音源の番号（1 / １ / ①） */
+const cueNo = (s: string): number => (CIRCLED.includes(s) ? CIRCLED.indexOf(s) + 1 : numOf(s));
+/** 秒数（任意）：5 / ５ / 5秒 / 2.5s */
+const SEC = '(?:[\\s　]*([0-9０-９]+(?:[.．][0-9０-９]+)?)[\\s　]*(?:秒|s)?)?';
+const IN = 'iIｉＩいイ';
+const OUT = 'aAａＡあア';
+
 export function parseQuick(text: string, base: CastMember[], ctx: QuickContext = {}): QuickResult {
   let cast = base;
   const added: Role[] = [];
@@ -138,6 +148,20 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
 
   /** ^ のあと：`1`・`1 fo 3秒`・`2 出囃子` → 音源、`拍手` → SE */
   const sound = (b: string) => {
+    b = trim(b);
+    let k: RegExpMatchArray | null;
+    // 数字なし＝照明：m・い＝明転、あ＝暗転（数字を付けたときだけ、その秒数かけてじわ）
+    if ((k = b.match(new RegExp(`^([mMｍＭ${IN}]|[${OUT}])${SEC}$`)))) {
+      const fade = k[2] ? numOf(k[2]) : 0;
+      return void push(withId({ t: 'light', on: new RegExp(`[mMｍＭ${IN}]`).test(k[1]), ...(fade > 0 ? { fade } : {}) }));
+    }
+    // 数字あり＝音源：1い＝イン、1あ＝アウト（数字を付けたときだけ、その秒数かけてフェード）
+    if ((k = b.match(new RegExp(`^([0-9０-９]+)[\\s　]*([${IN}]|[${OUT}])${SEC}$`)))) {
+      const inn = new RegExp(`[${IN}]`).test(k[2]);
+      const sec = k[3] ? numOf(k[3]) : 0;
+      const op = (sec > 0 ? (inn ? 'F.I' : 'F.O') : inn ? 'C.I' : 'C.O') as CueOp;
+      return void push(withId({ t: 'cue', n: numOf(k[1]), op, ...(sec > 0 ? { sec } : {}) }));
+    }
     const c = b.match(/^([0-9０-９]+)[\s　]*(.*)$/);
     if (!c) return void (b && push(withId({ t: 'se', x: b })));
     const n = Number(c[1].replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10)));
@@ -160,6 +184,15 @@ export function parseQuick(text: string, base: CastMember[], ctx: QuickContext =
 
     // 「、、」は「……」に（打ちやすい読点で三点リーダーを書く。打った数だけ長く）
     l = l.replace(/[、,，]{2,}/g, (d) => '…'.repeat(d.length));
+    // ジョジョ明転・ジョジョ暗転 → 徐々明転・徐々暗転
+    l = l.replace(/^(?:ジョジョ|じょじょ)に?(?=明転|暗転)/, '徐々');
+    // 明転5・暗転５ → 数字を付けたときだけ、その秒数かけてじわ
+    if ((m = l.match(/^(明転|暗転)[\s　]*([0-9０-９]+(?:[.．][0-9０-９]+)?)$/))) l = `${m[1]} ${numOf(m[2])}秒`;
+    // 音源1・音源① → 音源を出す（C.I）。数字を付けたときだけフェード（音源1 5 → 5秒かけてイン）
+    if ((m = l.match(/^音源[\s　]*([①-⑳]|[0-9０-９]+)(?:[\s　]*([0-9０-９]+(?:[.．][0-9０-９]+)?)[\s　]*(?:秒|s)?)?$/))) {
+      const sec = m[2] ? numOf(m[2]) : 0;
+      return void push(withId({ t: 'cue', n: cueNo(m[1]), op: (sec > 0 ? 'F.I' : 'C.I') as CueOp, ...(sec > 0 ? { sec } : {}) }));
+    }
     // 行頭に ^ → 音：番号があれば音源、なければ SE
     if ((m = l.match(/^[\^＾][\s　]*(.*)$/))) return sound(m[1]);
     // 行頭に @ → ト書き（Shift の要る括弧を打たずに済む）

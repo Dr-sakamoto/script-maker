@@ -141,4 +141,29 @@ describe('まとめ書き：雑に打った文章', () => {
     expect(show(r.items)).toEqual(['(a立つ。　そして座る)', 'a:どうも', 'a:ボケです（頭をかく）']);
     expect(show(parseQuick('2 もう！だからおれじゃないってぇ　りゅうきがいっただけじゃん＠なく', cast, { first: 'a' }).items)).toEqual(['b:もう！だからおれじゃないってぇ', 'b:りゅうきがいっただけじゃん（なく）']);
   });
+  it('照明・音源のショートカット：数字なしはカット、数字を付けたときだけ秒数かけてじわ・フェード', () => {
+    const one = (t: string) => parseQuick(t, cast, { first: 'a' }).items.map(({ id: _id, ...o }) => o);
+    // 照明（数字なし）：m・い＝明転、あ＝暗転
+    expect(one('＾ｍ')).toEqual([{ t: 'light', on: true }]);
+    expect(one('^い')).toEqual([{ t: 'light', on: true }]);
+    expect(one('＾あ')).toEqual([{ t: 'light', on: false }]);
+    expect(one('^あ5')).toEqual([{ t: 'light', on: false, fade: 5 }]);
+    // 音源（数字あり）：1い＝イン、1あ＝アウト、後ろの数字＝秒数
+    expect(one('＾１い')).toEqual([{ t: 'cue', n: 1, op: 'C.I' }]);
+    expect(one('＾１い５')).toEqual([{ t: 'cue', n: 1, op: 'F.I', sec: 5 }]);
+    expect(one('＾１あ')).toEqual([{ t: 'cue', n: 1, op: 'C.O' }]);
+    expect(one('^1あ2.5秒')).toEqual([{ t: 'cue', n: 1, op: 'F.O', sec: 2.5 }]);
+    expect(one('^15い')).toEqual([{ t: 'cue', n: 15, op: 'C.I' }]);
+    // これまでの書き方・名前付き・SE はそのまま
+    expect(one('^1 fo 3秒')).toEqual([{ t: 'cue', n: 1, op: 'F.O', sec: 3 }]);
+    expect(one('^2 出囃子')).toEqual([{ t: 'cue', n: 2, op: 'C.I', x: '出囃子' }]);
+    expect(one('^あいう')).toEqual([{ t: 'se', x: 'あいう' }]);
+    // 言葉でも：明転・暗転・音源1（数字を付けたときだけじわ・フェード）。ジョジョ＝徐々
+    expect(one('明転5')).toEqual([{ t: 'light', on: true, fade: 5 }]);
+    expect(one('ジョジョ暗転')).toEqual([{ t: 'light', on: false, fade: 3 }]);
+    expect(one('音源①')).toEqual([{ t: 'cue', n: 1, op: 'C.I' }]);
+    expect(one('音源1 5秒')).toEqual([{ t: 'cue', n: 1, op: 'F.I', sec: 5 }]);
+    // M1（M-1）はセリフのまま
+    expect(one('M1')).toEqual([{ t: 'line', w: 'a', x: 'M1' }]);
+  });
 });
